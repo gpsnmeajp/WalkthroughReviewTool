@@ -23,6 +23,7 @@ include("  const rangeLabel", "  const announce");
 include("  function buildPrompt", "  async function copyPrompt");
 include("  function activateComment", "  function makeScrollMaps");
 include("  function chooseCommentIndex", "  function openQuestion");
+include("  function isVisibleExcluded", "  function commentHashInfo");
 
 let cases = 0;
 function test(name, check) {
@@ -31,6 +32,18 @@ function test(name, check) {
   console.log(`OK ${name}`);
 }
 const { makeScrollMaps, interpolateScroll, commentHashInfo, buildPrompt } = context;
+
+test("対象外一覧はGitの除外対象とドットフォルダを省き、通常ファイルとドットファイルを残す", () => {
+  for (const path of [".git", ".git/config", ".cache/data.json", "src/.hidden/config.py"]) {
+    assert.equal(context.isVisibleExcluded({ path, selected: false }), false, path);
+  }
+  assert.equal(context.isVisibleExcluded({ path: "build/output.js", selected: false, git_ignored: true }), false);
+  assert.equal(context.isVisibleExcluded({ path: "src/main.py", selected: true }), false);
+  for (const path of ["src/unreviewed.py", ".gitignore", ".env", "src/.config"]) {
+    assert.equal(context.isVisibleExcluded({ path, selected: false }), true, path);
+    assert.equal(context.isVisibleExcluded({ path, selected: false, git_ignored: false }), true, path);
+  }
+});
 
 test("カードのアンカーが到達不能でも、右最下部からコード最下部へ移動する", () => {
   const maps = makeScrollMaps([{ code: 100, detail: 100 }, { code: 700, detail: 500 }, { code: 900, detail: 900 }], 1000, 600);
@@ -128,6 +141,239 @@ test("旧行の正規化済み文字列が別途ある場合は旧側の質問�
   assert.ok(!prompt.includes("\ufefftext"));
 });
 
+test("本文変更なしの差分でも質問文に実行権限とrenameの情報を残す", () => {
+  const summary = ["モード変更: 100644 → 100755", "ファイル名変更: before.py → after.py"];
+  const prompt = buildPrompt("変更内容は？", { file: { ...file, diff_summary: summary }, side: "new", start: null, end: null });
+  assert.ok(prompt.includes("本文以外の差分:"));
+  for (const item of summary) assert.ok(prompt.includes(item));
+  assert.ok(!buildPrompt("旧入力", { file, side: "new", start: null, end: null }).includes("本文以外の差分:"));
+});
+
+test("解説と行からの質問に対象の図・説明・SVG全文を安全なフェンスで含める", () => {
+  const diagram = { title: "入力から出力", description: "入力を検証して結果を渡す。", svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><text x="4" y="25">```</text></svg>' };
+  const withDiagram = { ...comment, diagrams: [diagram] };
+  const diagramFile = { ...file, comments: [withDiagram, { ...comment, id: "unrelated", start_line: 8, end_line: 9, diagrams: [{ ...diagram, title: "範囲外の図" }] }] };
+  for (const questionContext of [
+    { file: diagramFile, side: "old", start: 3, end: 3, comment: withDiagram },
+    { file: diagramFile, side: "old", start: 3, end: 3 },
+  ]) {
+    const prompt = buildPrompt("図の流れは？", questionContext);
+    assert.ok(prompt.includes("解説 c1 の図: 入力から出力"));
+    assert.ok(prompt.includes("説明: 入力を検証して結果を渡す。"));
+    assert.ok(prompt.includes("````svg\n" + diagram.svg + "\n````"));
+    assert.ok(!prompt.includes("範囲外の図"));
+  }
+  const fullPrompt = buildPrompt("全体は？", { file: diagramFile, side: "old", start: null, end: null });
+  assert.ok(fullPrompt.includes("範囲外の図"));
+});
+
+function renderingHarness() {
+  const created = [];
+  const node = (tag, className, text) => {
+    const element = {
+      tagName: tag.toUpperCase(), className: className || "", textContent: text === undefined ? "" : String(text),
+      children: [], attributes: {}, events: {}, dataset: {}, hidden: false, disabled: false,
+      append(...children) { for (const child of children) child.parentElement = this; this.children.push(...children); },
+      replaceChildren(...children) { this.children = children; },
+      setAttribute(name, value) { this.attributes[name] = String(value); },
+      addEventListener(name, callback) { this.events[name] = callback; },
+      showModal() { this.open = true; },
+      contains(child) { return child === this || this.children.some((item) => item.contains(child)); },
+      closest(selector) {
+        const tags = selector.toUpperCase().split(",");
+        return tags.includes(this.tagName) ? this : this.parentElement?.closest(selector) || null;
+      },
+    };
+    element.classList = { add: (name) => { element.className += ` ${name}`; } };
+    Object.defineProperty(element, "innerHTML", { set() { throw new Error("図や差分情報をHTMLとして挿入しない"); } });
+    created.push(element);
+    return element;
+  };
+  const elements = Object.fromEntries(["diff-summary", "diff-summary-list", "diagram-dialog-title", "diagram-dialog-content", "diagram-dialog"].map((id) => [id, node("div")]));
+  let refreshes = 0;
+  Object.assign(context, {
+    node, $: (id) => elements[id],
+    requestAnimationFrame: (callback) => callback(),
+    refreshAnchors: () => { refreshes++; },
+  });
+  include("  function renderDiffSummary", "  function renderCode");
+  include("  function renderDiagram", "  function renderComments");
+  return { elements, created, refreshes: () => refreshes };
+}
+
+test("対象外フィルタは一覧と一致し、対象・すべてフィルタは隠したファイルも保持する", () => {
+  const harness = renderingHarness(), savedData = context.data, savedState = context.state;
+  const inventory = [
+    { path: "main.py", selected: true },
+    { path: ".config/selected.py", selected: true, git_ignored: true },
+    { path: "docs/readme.md", selected: false },
+    { path: ".gitignore", selected: false },
+    { path: ".git/config", selected: false },
+    { path: "src/.cache/data.json", selected: false },
+    { path: "build/generated.js", selected: false, git_ignored: true },
+  ];
+  harness.elements["file-search"] = { value: "" };
+  harness.elements["file-tree"] = context.node("nav");
+  harness.elements["file-tree"].querySelectorAll = () => [];
+  context.data = { inventory };
+  context.state = { filter: "excluded" };
+  context.makeFileButton = (item) => {
+    const button = context.node("button");
+    button.dataset.filePath = item.path;
+    return button;
+  };
+  include("  function renderTree", "  function renderExcluded");
+  const paths = (element) => [...(element.dataset.filePath ? [element.dataset.filePath] : []), ...element.children.flatMap(paths)].sort();
+  try {
+    context.renderTree();
+    assert.deepEqual(paths(harness.elements["file-tree"]), inventory.filter(context.isVisibleExcluded).map((item) => item.path).sort());
+    context.state.filter = "selected";
+    context.renderTree();
+    assert.deepEqual(paths(harness.elements["file-tree"]), inventory.filter((item) => item.selected).map((item) => item.path).sort());
+    context.state.filter = "all";
+    context.renderTree();
+    assert.deepEqual(paths(harness.elements["file-tree"]), inventory.map((item) => item.path).sort());
+    harness.elements["file-search"].value = ".git/config";
+    context.renderTree();
+    assert.deepEqual(paths(harness.elements["file-tree"]), [".git/config"]);
+  } finally {
+    context.data = savedData;
+    context.state = savedState;
+  }
+});
+
+test("省略後の対象外一覧が空でも、全ファイルをレビュー済みとは表示しない", () => {
+  const harness = renderingHarness();
+  harness.elements["excluded-list"] = context.node("ul");
+  context.excluded = [];
+  include("  function renderExcluded", "  function renderOverview");
+  context.renderExcluded();
+  const empty = harness.elements["excluded-list"].children[0];
+  assert.equal(empty.children[1].textContent, "表示する対象外ファイルはありません");
+  assert.equal(empty.children[2].textContent, "全ファイルは左の「すべて」から確認できます。");
+});
+
+test("本文以外の差分は文字列で表示し、次の旧形式ファイルでは消す", () => {
+  const harness = renderingHarness();
+  context.renderDiffSummary({ diff_summary: ["権限: 100644 → 100755", "名前変更: <name>.py → b.py"] });
+  assert.equal(harness.elements["diff-summary"].hidden, false);
+  assert.deepEqual(harness.elements["diff-summary-list"].children.map((item) => item.textContent), ["権限: 100644 → 100755", "名前変更: <name>.py → b.py"]);
+  context.renderDiffSummary({});
+  assert.equal(harness.elements["diff-summary"].hidden, true);
+  assert.equal(harness.elements["diff-summary-list"].children.length, 0);
+});
+
+test("図は説明付き画像として隔離し、読み込み後に連動を再計算して拡大できる", () => {
+  const harness = renderingHarness();
+  const diagram = { title: "構造 <1>", description: "AからBへの流れ", svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300"><text x="10" y="30">A → B</text></svg>' };
+  const figure = context.renderDiagram(diagram);
+  assert.equal(figure.tagName, "FIGURE");
+  assert.equal(figure.children[0].tagName, "FIGCAPTION");
+  assert.equal(figure.children[0].children[0].textContent, diagram.title);
+  assert.equal(figure.children[0].children[1].textContent, diagram.description);
+  const image = harness.created.find((item) => item.tagName === "IMG");
+  assert.equal(image.alt, diagram.description);
+  assert.equal(image.src, "data:image/svg+xml;charset=utf-8," + encodeURIComponent(diagram.svg));
+  assert.ok(!harness.created.some((item) => item.tagName === "SVG"));
+  image.events.load();
+  assert.equal(harness.refreshes(), 1);
+  const enlarge = harness.created.find((item) => item.tagName === "BUTTON");
+  enlarge.events.click();
+  assert.equal(harness.elements["diagram-dialog"].open, true);
+  const expandedFigure = harness.elements["diagram-dialog-content"].children[0];
+  assert.ok(expandedFigure.className.includes("is-expanded"));
+  assert.equal(expandedFigure.children.length, 2, "拡大画面からさらに拡大画面を開かない");
+});
+
+test("図の欠損と画像エラーでも説明を残し、スクロール位置を再計算する", () => {
+  for (const svg of ["", "<svg/>"]) {
+    const harness = renderingHarness();
+    const figure = context.renderDiagram({ title: "欠損時の図", description: "処理の説明", svg });
+    const image = harness.created.find((item) => item.tagName === "IMG");
+    if (svg) image.events.error();
+    assert.equal(image.hidden, true);
+    assert.equal(figure.children[0].children[1].textContent, "処理の説明");
+    assert.equal(figure.children[1].children[1].hidden, false);
+    assert.ok(figure.children[1].children[1].textContent.includes("図を表示できません"));
+    assert.equal(figure.children[2].disabled, true);
+    assert.equal(harness.refreshes(), 1);
+  }
+});
+
+function withCommentCard(commentOverride, check) {
+  const harness = renderingHarness(), jumps = [];
+  const savedNavigate = context.navigate, savedOpenQuestion = context.openQuestion;
+  for (const id of ["comments-view", "detail-count", "detail-scroll", "sync-toggle"]) harness.elements[id] = context.node("div");
+  let selection = null;
+  Object.assign(context, {
+    state: { file, rowMaps: { old: new Map([[3, 0]]), new: new Map([[3, 1]]) } },
+    window: { getSelection: () => selection },
+    renderMarkdown: (body, target) => target.append(context.node("p", "", body)),
+    navigate: (...args) => jumps.push(args),
+  });
+  include("  function rowIndexFor", "  function renderDiffSummary");
+  include("  function renderComments", "  function activateComment");
+  context.renderComments({ ...file, comments: [{ ...comment, hash_status: "verified", ...commentOverride }] });
+  const card = harness.elements["comments-view"].children[0];
+  try {
+    check({ ...harness, card, jumps, select: (value) => { selection = value; } });
+  } finally {
+    context.navigate = savedNavigate;
+    context.openQuestion = savedOpenQuestion;
+  }
+}
+
+test("解説カードの本文・見出し・余白から対応する旧行とカードへ移動できる", () => {
+  withCommentCard({}, ({ card, jumps }) => {
+    const body = card.children.find((item) => item.className === "markdown");
+    for (const target of [card, card.children.find((item) => item.tagName === "H3"), body.children[0]]) card.events.click({ target });
+    assert.equal(jumps.length, 3);
+    for (const args of jumps) assert.deepEqual(args, [file.path, 3, "old", 3, "c1"]);
+    assert.equal(card.dataset.navigable, "true");
+    assert.ok(!card.children.some((item) => item.className === "hash-verified"));
+  });
+});
+
+test("カード内の質問・リンク・図拡大・選択中の文章ではカードのジャンプを実行しない", () => {
+  withCommentCard({ diagrams: [{ title: "図", description: "説明", svg: "<svg/>" }] }, ({ card, created, jumps, select }) => {
+    for (const button of created.filter((item) => item.tagName === "BUTTON" && card.contains(item))) {
+      const child = context.node("span");
+      button.append(child);
+      card.events.click({ target: child });
+    }
+    const link = context.node("a"), linkText = context.node("strong");
+    link.append(linkText);
+    card.append(link);
+    card.events.click({ target: linkText });
+    const body = card.children.find((item) => item.className === "markdown");
+    select({ isCollapsed: false, anchorNode: body.children[0], focusNode: body.children[0] });
+    card.events.click({ target: body });
+    assert.equal(jumps.length, 0);
+    select({ isCollapsed: true, anchorNode: body, focusNode: body });
+    card.events.click({ target: card, defaultPrevented: true });
+    assert.equal(jumps.length, 0);
+    const range = created.find((item) => item.className === "comment-range");
+    assert.equal(range.disabled, false);
+    assert.equal(range.attributes["aria-label"], "旧 L3 のコードへ移動");
+    range.events.click();
+    assert.equal(jumps.length, 1, "既存の行番号ボタンはキーボード操作の入口として残す");
+  });
+});
+
+test("参照行が消えたカードはジャンプせず、照合警告と質問を残す", () => {
+  withCommentCard({ range_status: "missing", hash_status: "mismatch" }, ({ card, created }) => {
+    assert.equal(card.events.click, undefined);
+    assert.equal(card.dataset.navigable, undefined);
+    assert.equal(created.find((item) => item.className === "comment-range").disabled, true);
+    assert.ok(card.children.some((item) => item.className === "hash-notice mismatch"));
+    assert.ok(card.children.some((item) => item.className === "reference-warning"));
+    let question;
+    context.openQuestion = (value) => { question = value; };
+    created.find((item) => item.tagName === "BUTTON" && item.textContent === "この解説に質問 ↗").events.click();
+    assert.equal(question.comment.id, "c1");
+  });
+});
+
 function navigationHarness() {
   function classes() {
     const values = new Set();
@@ -215,7 +461,7 @@ test("削除ファイルの質問ボタンは旧版を指定し、質問文に�
   harness.elements["ask-file"] = { addEventListener: (_, callback) => { onClick = callback; } };
   context.inventoryMap = new Map([["file.py", { status: "deleted" }]]);
   context.openQuestion = (value) => { question = value; };
-  include('  $("ask-file").addEventListener', '  $("close-question").addEventListener');
+  include('  $("ask-file").addEventListener', '  $("close-diagram").addEventListener');
   onClick();
   assert.equal(question.side, "old");
   const deletedFile = { ...file, rows: [file.rows[0]], code_hashes: { new: "empty-hash", old: "deleted-code-hash" } };

@@ -189,7 +189,7 @@ class PackageSkillTests(unittest.TestCase):
             package.verify_archive(candidate, payload)
 
     def test_extracted_skill_prepares_and_builds_full_and_diff_without_source(self):
-        """配布物だけで準備・全文・削除を含む差分・解説のマージが動くことを確認する。"""
+        """配布物だけで準備・差分・SVG解説のマージと再生成が動くことを確認する。"""
         archive_path, *_ = package.build_package(self.skill, self.output)
         extracted = self.workspace / "単独 展開"
         with zipfile.ZipFile(archive_path) as archive:
@@ -203,6 +203,7 @@ class PackageSkillTests(unittest.TestCase):
         project = self.workspace / "project"
         project.mkdir()
         (project / "main.py").write_text("value = 2\n", encoding="utf-8")
+        (project / "run.sh").write_text("#!/bin/sh\npython main.py\n", encoding="utf-8")
         prepared = self.run_python(
             standalone / "scripts/prepare_review.py", project,
             "--work-parent", self.workspace / "work",
@@ -214,11 +215,20 @@ class PackageSkillTests(unittest.TestCase):
         patch = work / "diff.patch"
         patch.write_text(
             "--- a/main.py\n+++ b/main.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
-            "--- a/old.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-legacy = True\n",
+            "--- a/old.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-legacy = True\n"
+            "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n",
             encoding="utf-8",
         )
+        diagram = {
+            "title": "設定値の定義",
+            "description": "main.pyでvalueを2に設定します。",
+            "svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 80">'
+                   '<rect x="10" y="10" width="220" height="60" rx="8" fill="#eef2ff"/>'
+                   '<text x="120" y="45" text-anchor="middle" font-size="18">value = 2</text>'
+                   '</svg>',
+        }
         for mode in ("full", "diff"):
-            target_files = ["main.py"] if mode == "full" else ["main.py", "old.py"]
+            target_files = ["main.py"] if mode == "full" else ["main.py", "old.py", "run.sh"]
             targets = work / f"{mode}-targets.json"
             targets.write_text(json.dumps({"title": mode, "files": target_files}), encoding="utf-8")
             output = work / mode
@@ -235,11 +245,15 @@ class PackageSkillTests(unittest.TestCase):
                     "start_line": 1, "end_line": 1, "code_hash": file["code_hashes"][side],
                     "title": "設定値", "body": "この行で値を定義します。",
                 })
+                if file["path"] == "main.py":
+                    comments[-1]["diagrams"] = [diagram]
             comments_path = work / f"{mode}-comments.json"
             comments_path.write_text(
                 json.dumps({"overview": "# 配布後の確認", "comments": comments}), encoding="utf-8"
             )
             self.run_python(cli, "merge", output, "--comments", comments_path)
+            # 最終確認の再buildでも、図と作成時Hashを展開スキルだけで引き継ぐ。
+            self.run_python(cli, *arguments)
             final = json.loads((output / "review.json").read_text("utf-8"))
             self.assertEqual(final["mode"], mode)
             self.assertTrue(all(
@@ -248,9 +262,22 @@ class PackageSkillTests(unittest.TestCase):
             ))
             self.assertTrue((output / "index.html").is_file())
             self.assertTrue((output / "assets/vendor/marked.js").is_file())
+            main = next(file for file in final["files"] if file["path"] == "main.py")
+            self.assertEqual(main["comments"][0]["diagrams"], [diagram])
+            self_review = (output / "self-review.md").read_text("utf-8")
+            self.assertIn(diagram["svg"], self_review)
+            self.assertIn(diagram["description"], self_review)
+            self.assertTrue((standalone / "references/svg-diagrams.md").is_file())
             if mode == "diff":
                 deleted = next(file for file in final["files"] if file["path"] == "old.py")
                 self.assertEqual(deleted["rows"][0]["kind"], "removed")
+                script = next(file for file in final["files"] if file["path"] == "run.sh")
+                self.assertEqual(script["diff_metadata"]["old mode"], "100644")
+                self.assertEqual(script["diff_metadata"]["new mode"], "100755")
+                self.assertTrue(all(row["kind"] == "context" for row in script["rows"]))
+                self.assertIn("100644", self_review)
+                self.assertIn("100755", self_review)
+                self.assertTrue(script["diff_summary"])
 
 
 if __name__ == "__main__":

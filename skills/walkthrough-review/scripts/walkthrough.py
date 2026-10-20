@@ -24,13 +24,16 @@ from datetime import datetime, timezone
 import hashlib
 import html
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
+import subprocess
 import sys
 from urllib.parse import unquote
+import xml.etree.ElementTree as ET
 
 from diff_parser import build_rows, parse_patch
 
@@ -124,6 +127,34 @@ def is_link(path):
     )
 
 
+def annotate_git_ignored(project, items):
+    """Gitの無視対象かを一覧へ付ける。走査結果や対象選定からは除外しない。
+
+    check-ignoreへ相対パスをNUL区切りで一括入力し、空白・日本語・改行を
+    含む名前でも分割を誤らない。Gitの追跡済みファイルは無視対象にならない。
+    Gitがない、リポジトリでない、判定できない場合も通常のレビューを続行する。
+    この補助情報は対象外一覧の表示を絞る用途であり、本文の取込可否には使わない。
+    """
+    for item in items:
+        item["git_ignored"] = False
+    if not items:
+        return
+    paths = b"".join(item["path"].encode("utf-8", errors="surrogateescape") + b"\0" for item in items)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project), "check-ignore", "--stdin", "-z"],
+            input=paths, capture_output=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    # 0は一致あり、1は一致なし。エラー時の部分出力を確定情報にしない。
+    if result.returncode not in (0, 1):
+        return
+    ignored = set(result.stdout.decode("utf-8", errors="surrogateescape").split("\0"))
+    for item in items:
+        item["git_ignored"] = item["path"] in ignored
+
+
 def scan_project(project):
     """プロジェクト全体を走査し、各項目のパス・状態・サイズを一覧で返す。
 
@@ -131,6 +162,7 @@ def scan_project(project):
     リストで、通常ファイルのほか、リンク、特殊ファイル、走査不能な項目を
     含む。全項目のselectedはFalseで初期化し、AIの対象リストとの照合は
     create_reviewが後から行う。隠しファイルや.gitを名前で除外しない。
+    Gitの無視対象はgit_ignoredとして記録し、画面の対象外一覧だけで除外する。
 
     通常ディレクトリ自身は一覧に追加せず、その中を順番に走査する。リンク先は
     追跡しない。読めないディレクトリはそのパスとエラーを残すが、その中にある
@@ -184,6 +216,7 @@ def scan_project(project):
                 # 列挙後に削除された項目や属性を読めない項目も、一覧から消さない。
                 item.update(status="unreadable", message=str(error))
             inventory.append(item)
+    annotate_git_ignored(project, inventory)
     # スタックでの巡回順と表示順を切り離し、最終的には相対パス順にそろえる。
     return sorted(inventory, key=lambda item: item["path"])
 
@@ -310,6 +343,29 @@ def update_code_hashes(file):
     file["code_hashes"] = hashes
 
 
+def diff_summary(entry):
+    """本文の行に現れない変更を、日本語の表示用文字列として残す。"""
+    if not entry:
+        return []
+    metadata = entry["metadata"]
+    old, new = entry["old_path"], entry["new_path"]
+    summary = []
+    if old is None:
+        summary.append(f"新規ファイル: {new}")
+    elif new is None:
+        summary.append(f"削除ファイル: {old}")
+    elif old != new:
+        label = "複製" if "copy from" in metadata else "名称変更"
+        summary.append(f"{label}: {old} → {new}")
+    if "old mode" in metadata:
+        summary.append(f"権限: {metadata['old mode']} → {metadata['new mode']}")
+    elif "new file mode" in metadata:
+        summary.append(f"追加時の権限: {metadata['new file mode']}")
+    elif "deleted file mode" in metadata:
+        summary.append(f"削除前の権限: {metadata['deleted file mode']}")
+    return summary
+
+
 def create_review(project, target_data, patch_text=None):
     """プロジェクトを走査・読込し、解説が空のレビュー辞書を新しく返す。
 
@@ -376,6 +432,8 @@ def create_review(project, target_data, patch_text=None):
                 # タプルの3要素目はBOMを保持する照合用本文。表示用本文とは区別する。
                 rows = build_rows(entry, snapshots[name][2])
             patch_rows[name] = rows
+        # 削除済みパスも現時点の無視規則で判定する。全件の再判定は避ける。
+        annotate_git_ignored(project, [item for item in inventory if item["status"] == "deleted"])
     files = []
     for name in targets:
         # AIが指定した順番で対象ファイルを作る。本文の採用可否は全件一覧を基準にする。
@@ -399,6 +457,8 @@ def create_review(project, target_data, patch_text=None):
         # パッチがない対象も本文を省略せず、すべてcontext行として作る。
         file = {
             "path": name, "old_path": entry.get("old_path"),
+            "diff_metadata": dict(entry.get("metadata", {})),
+            "diff_summary": diff_summary(entry),
             "language": LANGUAGES.get(Path(name).suffix.lower(), "plain"),
             "sha256": digest, "text": text,
             "rows": patch_rows[name] if name in patch_rows else plain_rows(text),
@@ -454,6 +514,100 @@ def validate_links(markdown, files):
             raise ValueError(f"内部リンクの対象ファイルまたは行が存在しません: {value}")
 
 
+SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+SVG_ELEMENTS = {
+    "svg", "g", "defs", "marker", "path", "rect", "circle", "ellipse", "line",
+    "polyline", "polygon", "text", "tspan", "title", "desc", "linearGradient",
+    "radialGradient", "stop", "clipPath",
+}
+# CSSや外部素材を使わず、図形・文字・色・内部参照だけを記述できる属性に絞る。
+SVG_ATTRIBUTES = {
+    "id", "viewBox", "width", "height", "preserveAspectRatio", "x", "y", "x1",
+    "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "fx", "fy", "fr", "d",
+    "points", "pathLength", "transform", "fill", "fill-opacity", "fill-rule",
+    "stroke", "stroke-width", "stroke-opacity", "stroke-linecap", "stroke-linejoin",
+    "stroke-miterlimit", "stroke-dasharray", "stroke-dashoffset", "opacity",
+    "vector-effect", "clip-path", "clip-rule", "clipPathUnits", "marker-start",
+    "marker-mid", "marker-end", "markerWidth", "markerHeight", "refX", "refY",
+    "orient", "markerUnits", "dx", "dy", "rotate", "textLength", "lengthAdjust",
+    "font-family", "font-size", "font-weight", "font-style", "text-anchor",
+    "dominant-baseline", "alignment-baseline", "letter-spacing", "word-spacing",
+    "gradientUnits", "gradientTransform", "spreadMethod", "offset", "stop-color",
+    "stop-opacity",
+}
+SVG_REFERENCE_ATTRIBUTES = {"fill", "stroke", "clip-path", "marker-start", "marker-mid", "marker-end"}
+SVG_ID = r"[A-Za-z_][A-Za-z0-9_.:-]*"
+SVG_NUMBER = r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+
+
+def validate_svg(svg):
+    """静的なSVGだけを受け付け、外部参照や実行可能な内容は削らず拒否する。
+
+    入力文字列は書き換えない。ElementTreeで構造を検証し、名前空間・要素・属性、
+    viewBox、内部参照の存在を確かめる。許可していない内容はValueErrorになる。
+    """
+    if not isinstance(svg, str) or not svg.strip():
+        raise ValueError("svgには空でないSVG文字列を指定してください")
+    if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b|<\?", svg, re.I):
+        raise ValueError("SVGではDOCTYPE・ENTITY・処理命令を使用できません")
+    try:
+        root = ET.fromstring(svg)
+    except ET.ParseError as error:
+        raise ValueError(f"SVGをXMLとして読めません: {error}") from error
+    if root.tag != f"{{{SVG_NAMESPACE}}}svg":
+        raise ValueError(f"SVGのルートはxmlns=\"{SVG_NAMESPACE}\"を持つsvgにしてください")
+    values = re.split(r"[\s,]+", root.get("viewBox", "").strip())
+    if (
+        len(values) != 4
+        or any(not re.fullmatch(SVG_NUMBER, value) for value in values)
+        or any(not math.isfinite(float(value)) for value in values)
+        or float(values[2]) <= 0 or float(values[3]) <= 0
+    ):
+        raise ValueError("SVGのviewBoxには有限数4個を指定し、幅・高さを正にしてください")
+    ids, references = set(), set()
+    allowed_tags = {f"{{{SVG_NAMESPACE}}}{name}" for name in SVG_ELEMENTS}
+    for element in root.iter():
+        if element.tag not in allowed_tags:
+            raise ValueError(f"SVGで許可していない要素です: {element.tag}")
+        for attribute, value in element.attrib.items():
+            if attribute not in SVG_ATTRIBUTES:
+                raise ValueError(f"SVGで許可していない属性です: {attribute}")
+            if attribute == "id":
+                if not re.fullmatch(SVG_ID, value) or value in ids:
+                    raise ValueError(f"SVGのidが不正または重複しています: {value}")
+                ids.add(value)
+            # url(...)は参照専用属性の完全な内部参照だけを許可する。
+            # XML文字参照は解析済みなので、符号化された外部URLもここで拒否できる。
+            reference = re.fullmatch(rf"url\(#({SVG_ID})\)", value)
+            if reference and attribute in SVG_REFERENCE_ATTRIBUTES:
+                references.add(reference[1])
+            elif re.search(r"url\s*\(|[\\]|(?:https?|file|data|javascript):|//", value, re.I):
+                raise ValueError(f"SVGの外部URL・未対応参照は使用できません: {attribute}")
+            if element is root and attribute in ("width", "height"):
+                length = re.fullmatch(rf"({SVG_NUMBER})(?:px|pt|pc|mm|cm|in|em|ex|%)?", value)
+                if not length or not math.isfinite(float(length[1])) or float(length[1]) <= 0:
+                    raise ValueError(f"SVGの{attribute}は正の有限寸法にしてください")
+    missing = references - ids
+    if missing:
+        raise ValueError(f"SVGの内部参照先idが存在しません: {', '.join(sorted(missing))}")
+
+
+def validate_diagrams(diagrams):
+    """解説に添える図の配列と説明・SVGを検証する。入力は変更しない。"""
+    if not isinstance(diagrams, list):
+        raise ValueError("diagramsは配列にしてください")
+    for number, diagram in enumerate(diagrams, 1):
+        if not isinstance(diagram, dict) or set(diagram) != {"title", "description", "svg"}:
+            raise ValueError(f"図{number}: title・description・svgを指定してください")
+        for field in ("title", "description"):
+            if not isinstance(diagram[field], str) or not diagram[field].strip():
+                raise ValueError(f"図{number}: {field}には空でない文字列を指定してください")
+        try:
+            validate_svg(diagram["svg"])
+        except ValueError as error:
+            raise ValueError(f"図{number}: {error}") from error
+
+
 def merge_comments(review, payload, preserve=False):
     """解説JSONを検証し、review内の概要・解説・照合警告を置き換えて返す。
 
@@ -503,7 +657,7 @@ def merge_comments(review, payload, preserve=False):
             raise
         warnings.append(f"以前の概要に無効な参照があります: {error}")
     ids = set()
-    allowed = {"id", "file", "start_line", "end_line", "side", "title", "body", "code_hash"}
+    allowed = {"id", "file", "start_line", "end_line", "side", "title", "body", "code_hash", "diagrams"}
     required = {"id", "file", "start_line", "end_line", "title", "body"}
     for comment in comments:
         # 辞書以外の要素、必須キー不足、未定義キーは取り込み前に拒否する。
@@ -529,6 +683,8 @@ def merge_comments(review, payload, preserve=False):
             # 空白だけのタイトル・本文を、実際の解説があるものとして扱わない。
             if not isinstance(comment[field], str) or not comment[field].strip():
                 raise ValueError(f"{ident}: {field}には空でない文字列を指定してください")
+        if "diagrams" in comment:
+            validate_diagrams(comment["diagrams"])
         original_hash = comment.get("code_hash")
         # 未指定またはnullは古い入力との互換のため許可し、後でmissingとする。
         # 指定がある場合は、SHA-256の16進表現として64桁かを確かめる。
@@ -601,7 +757,7 @@ def preserve_comments(previous, review):
     """
     if Path(previous["project_root"]).resolve() != Path(review["project_root"]).resolve():
         raise ValueError("この出力フォルダは別のプロジェクト用です。新しい出力先を指定してください")
-    keys = {"id", "file", "start_line", "end_line", "side", "title", "body", "code_hash"}
+    keys = {"id", "file", "start_line", "end_line", "side", "title", "body", "code_hash", "diagrams"}
     # ファイルごとの旧コメントを1配列へまとめ、派生した検証フィールドを除く。
     comments = [
         {key: value for key, value in comment.items() if key in keys}
@@ -653,6 +809,17 @@ def line_ranges(numbers):
     return ", ".join(ranges)
 
 
+def diagram_review(comment):
+    """図の意図とSVG全文を、AIが再確認できるMarkdown断片へする。"""
+    output = []
+    for diagram in comment.get("diagrams", []):
+        output.extend([
+            f"##### 図: {diagram['title']}", "", diagram["description"], "",
+            fenced(diagram["svg"], "svg"), "",
+        ])
+    return output
+
+
 def self_review(review):
     """レビュー辞書から、AIが確認するためのMarkdown本文を生成して返す。
 
@@ -693,6 +860,8 @@ def self_review(review):
         # 新しい対象コードに結び付けられない旧解説は、JSONのまま全文を残す。
         output.extend(["", "## 対象がなくなった解説（再確認が必要）", ""])
         output.append(fenced(json.dumps(review["unattached_comments"], ensure_ascii=False, indent=2), "json"))
+        for comment in review["unattached_comments"]:
+            output.extend(diagram_review(comment))
     for file in review["files"]:
         # 元bytesのHashと解説用の正規化Hashは用途が異なるため、別々に表示する。
         output.extend([
@@ -700,6 +869,12 @@ def self_review(review):
             f"元バイト列のSHA-256: {file['sha256'] or '削除済み（差分から復元）'}", "",
             f"解説用コードハッシュ (new): {file['code_hashes']['new']}",
             f"解説用コードハッシュ (old): {file['code_hashes']['old']}", "",
+        ])
+        if file.get("diff_summary"):
+            output.extend(["### ファイルの変更", ""])
+            output.extend(f"- {change}" for change in file["diff_summary"])
+            output.append("")
+        output.extend([
             "### コード全文", "", "区分: ` `=変更なし、`+`=追加、`-`=削除。旧/新の行番号を併記。", "",
         ])
         lines = []
@@ -719,6 +894,7 @@ def self_review(review):
                 f"作成時: {comment.get('code_hash') or '未記録'} / 現在: {comment.get('actual_code_hash', '')}",
                 "", comment["body"], "",
             ])
+            output.extend(diagram_review(comment))
         if not file["comments"]:
             # 「解説なし」と空の出力の区別がつくよう、明示的な表示を入れる。
             output.append("（まだありません）")

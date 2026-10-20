@@ -174,6 +174,58 @@ class WalkthroughTests(unittest.TestCase):
         ])
         self.assertEqual(changed["rows"][-1]["new"], 3)
 
+    @unittest.skipUnless(walkthrough.shutil.which("git"), "Gitがない環境では実Gitの無視規則検証を省略")
+    def test_git_ignore_metadata_keeps_inventory_and_respects_nested_rules(self):
+        """Gitと同じ否定規則・入れ子・追跡状態で対象外表示用の情報を付ける。"""
+        def git(*args):
+            result = subprocess.run(
+                ["git", "-C", str(self.project), *args], capture_output=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        git("init", "--quiet")
+        self.write_source(".gitignore", "*.log\n!keep.log\nbuild/\n/root-only.tmp\n")
+        self.write_source("src/.gitignore", "*.cache\n!keep.cache\n")
+        for name in ("日本 語.log", "keep.log", "tracked.log", "build/output.py",
+                     "root-only.tmp", "src/root-only.tmp", "src/data.cache", "src/keep.cache"):
+            self.write_source(name, "retained\n")
+        git("add", "-f", "tracked.log")
+        inventory = {item["path"]: item for item in walkthrough.scan_project(self.project)}
+        for name in ("日本 語.log", "build/output.py", "root-only.tmp", "src/data.cache"):
+            self.assertTrue(inventory[name]["git_ignored"], name)
+        for name in ("keep.log", "tracked.log", "src/root-only.tmp", "src/keep.cache", "src/main.py"):
+            self.assertFalse(inventory[name]["git_ignored"], name)
+        # サブフォルダを対象にしても親のGit規則を使い、相対パスを取り違えない。
+        nested = {item["path"]: item for item in walkthrough.scan_project(self.project / "src")}
+        self.assertTrue(nested["data.cache"]["git_ignored"])
+        self.assertFalse(nested["keep.cache"]["git_ignored"])
+        # 無視対象を明示的に選んだレビューでは本文を取り込める。
+        review = self.review(["日本 語.log"])
+        self.assertEqual(review["files"][0]["text"], "retained\n")
+        chosen = next(item for item in review["inventory"] if item["path"] == "日本 語.log")
+        self.assertTrue(chosen["selected"])
+        self.assertTrue(chosen["git_ignored"])
+        # 現在は存在しない削除差分も、対象外一覧用の無視規則に従う。
+        patch = "diff --git a/deleted.log b/deleted.log\n--- a/deleted.log\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n"
+        deleted = next(item for item in self.review(patch=patch)["inventory"] if item["path"] == "deleted.log")
+        self.assertTrue(deleted["git_ignored"])
+
+    def test_git_ignore_detection_failure_does_not_block_review(self):
+        """Gitが無い・応答しない・リポジトリでない場合も本文と全一覧を取得する。"""
+        failures = (
+            FileNotFoundError("git unavailable"),
+            subprocess.TimeoutExpired("git", 15),
+            subprocess.CompletedProcess(["git"], 128, stdout=b".env\0", stderr=b"not a repository"),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__):
+                kwargs = {"side_effect": failure} if isinstance(failure, Exception) else {"return_value": failure}
+                with mock.patch.object(walkthrough.subprocess, "run", **kwargs):
+                    review = self.review()
+                self.assertEqual(len(review["inventory"]), 5)
+                self.assertEqual(review["files"][0]["text"], "before\nnew\nafter\n")
+                self.assertTrue(all(item["git_ignored"] is False for item in review["inventory"]))
+
     def test_unchanged_selected_file_in_diff_keeps_full_source(self):
         """パッチに含まれないhelper.pyもレビュー対象へ選ぶ。
 
@@ -184,6 +236,33 @@ class WalkthroughTests(unittest.TestCase):
         helper = review["files"][1]
         self.assertEqual(helper["text"], "helper first\nhelper second\n")
         self.assertTrue(all(row["kind"] == "context" for row in helper["rows"]))
+
+    def test_mode_only_diff_is_preserved_for_display_and_self_review(self):
+        """行の追加削除がなくても、実行権限の差分を資料から確認できる。"""
+        patch = "diff --git a/src/main.py b/src/main.py\nold mode 100644\nnew mode 100755\n"
+        review = self.build(patch)
+        file = review["files"][0]
+        self.assertEqual(file["diff_metadata"], {"old mode": "100644", "new mode": "100755"})
+        self.assertEqual(file["diff_summary"], ["権限: 100644 → 100755"])
+        self.assertTrue(all(row["kind"] == "context" for row in file["rows"]))
+        self.assertIn("権限: 100644 → 100755", (self.output / "self-review.md").read_text(encoding="utf-8"))
+
+    def test_rename_copy_and_empty_file_changes_have_visible_summaries(self):
+        """本文に差がない名称変更・複製・空ファイルの追加削除も明示する。"""
+        for operation, label in (("rename", "名称変更"), ("copy", "複製")):
+            patch = (
+                "diff --git a/old.py b/src/main.py\nsimilarity index 100%\n"
+                f"{operation} from old.py\n{operation} to src/main.py\n"
+            )
+            review = self.review(patch=patch)
+            self.assertEqual(review["files"][0]["diff_summary"], [f"{label}: old.py → src/main.py"])
+            self.assertIn(f"{label}: old.py → src/main.py", walkthrough.self_review(review))
+        self.write_source("empty.py", "")
+        added = self.review(["empty.py"], "diff --git a/empty.py b/empty.py\nnew file mode 100644\nindex 000..e69\n")
+        self.assertEqual(added["files"][0]["diff_summary"], ["新規ファイル: empty.py", "追加時の権限: 100644"])
+        deleted = self.review(["gone.py"], "diff --git a/gone.py b/gone.py\ndeleted file mode 100644\nindex e69..000\n")
+        self.assertEqual(deleted["files"][0]["diff_summary"], ["削除ファイル: gone.py", "削除前の権限: 100644"])
+        self.assertEqual(self.review()["files"][0]["diff_summary"], [])
 
     def test_deleted_file_is_in_inventory_even_when_excluded(self):
         """現在存在しないdeleted.pyの削除パッチを既存差分へ追加する。

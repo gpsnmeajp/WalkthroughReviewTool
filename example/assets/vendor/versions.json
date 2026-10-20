@@ -1,0 +1,34 @@
+{
+  "prismjs": {
+    "version": "1.30.0",
+    "source": "https://registry.npmjs.org/prismjs/1.30.0",
+    "integrity": "sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw==",
+    "components": [
+      "core",
+      "markup",
+      "css",
+      "clike",
+      "javascript",
+      "python",
+      "typescript",
+      "json",
+      "bash",
+      "c",
+      "cpp",
+      "csharp",
+      "java",
+      "go",
+      "rust",
+      "sql",
+      "yaml",
+      "markdown",
+      "diff",
+      "powershell"
+    ]
+  },
+  "marked": {
+    "version": "18.1.1",
+    "source": "https://registry.npmjs.org/marked/18.1.1",
+    "integrity": "sha512-zEGgrtUG8crk+TrMacJSVABU4DYDDkS8uqgU3ohrn/2fW9C2AEfUrO3m6IhpIpQpl7YcVpiXXC9cSMWDANT3dg=="
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "verified_at": "2026-10-20T17:48:19.067584+00:00",
+  "mode": "diff",
+  "baseline": "Saved source snapshot before this conversation UI changes; see comparison.json",
+  "selected_files": 10,
+  "comments": 40,
+  "diagrams": 1,
+  "inventory_entries": 529,
+  "raw_excluded": 519,
+  "visible_excluded": 63,
+  "integrity": {
+    "old_text_matches_saved_baseline": true,
+    "new_text_and_bytes_match_project": true,
+    "all_hash_status_verified": true,
+    "all_range_status_valid": true,
+    "link_warnings": 0,
+    "scan_warnings": 0,
+    "hash_warnings": 0,
+    "unattached_comments": 0,
+    "embedded_json_matches": true,
+    "asset_files_match_source": 8,
+    "asset_references_exist": 5,
+    "final_build_completed": true
+  },
+  "self_review": [
+    "All selected full sources and old/new rows",
+    "Overview and all 40 explanations",
+    "All SVG source, branches, arrows and descriptions",
+    "Diff metadata and uncovered ranges"
+  ],
+  "browser": {
+    "local_url": "http://127.0.0.1:8767/index.html",
+    "desktop_viewport": {
+      "width": 1358,
+      "height": 764
+    },
+    "mobile_viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "verified": [
+      "Overview and compact headers",
+      "Code rendering and internal navigation",
+      "Card heading click highlights new lines 347-378 (32 rows)",
+      "Keyboard navigation to old lines 352-356 (5 rows)",
+      "SVG enlargement; top, middle, bottom labels and arrows",
+      "Code/comment scroll synchronization with diagram card",
+      "Question generation includes SVG, description and code range",
+      "Mobile sidebar open/close and focus restoration",
+      "Final rebuild rendered again"
+    ],
+    "console_errors": 0,
+    "screenshots": [
+      "screenshots/overview.png",
+      "screenshots/code.png",
+      "screenshots/mobile.png"
+    ]
+  },
+  "implementation_tests_from_ui_change": {
+    "python": {
+      "total": 133,
+      "passed": 132,
+      "skipped": 1,
+      "skip_reason": "Windows symlink creation privilege unavailable"
+    },
+    "ui_logic": {
+      "passed": 27
+    },
+    "standalone_package": "passed"
+  },
+  "limitations": [
+    "Only this conversation UI changes are reviewed; unchanged files are excluded",
+    "Snapshot text diff does not represent Git mode, rename or copy history",
+    "Physical printing and disconnected-network device test were not performed"
+  ],
+  "sha256": {
+    "index.html": "ea8112a3f894ca24d985b2e810af3d3127944913707e9e7b123ed2dcf6139bac",
+    "review.json": "0cebc6860ab8ae2a2ac175cfbc7e8e0b6ef8cf4cd315dfba3e29314cd25e68ee",
+    "self-review.md": "49670f7bd74ce5973e34f0b247db473cc00cb815d9c82cc4cba9838cea187ca3",
+    "comments.json": "086bc126f967598a268d1991de49eab71d33c6876864a5eff7e36ffe38cb1abf",
+    "targets.json": "2e8396442062a181e5b66085cbd1a997ca213d8946b75e2f90d415907b5035d8",
+    "diff.patch": "c49baa9117d59bac44b40c6d64b3985b17dfc1cef69cf4686b1743b6424c5d74",
+    "comparison.json": "efc2ac6b3343493fb331063961b27e8e4e55472cf22075395069d1259aa2d1c6"
+  }
+}

@@ -1,0 +1,412 @@
+{
+  "overview": "# UI改善と対象外一覧の整理\n\nコードと解説を読む領域を広げ、カードから該当コードへ移動しやすくした変更です。対象外一覧には確認が必要なファイルを残し、Git管理データ・Gitの無視対象・ドットフォルダ配下を省きます。\n\n## 今回の比較範囲\n\n**修正直前の保存済みコード（2026年10月21日 02:22:13 JST）→ UI修正後の作業コピー**を比較した差分レビューです。既存の `example/review.json` の `files[].text` を比較元として保存し、実ファイルとの相違があった **10ファイル**を収録しました。以前からあったHEADとの差分を今回の変更へ混ぜていません。比較元の53ファイルのうち、残り43ファイルは同一で、新たな自作ファイルの追加・削除もありません。\n\n変更後の全文はPython CLIが実ファイルから取り込み、旧行は保存済み本文から作成した `diff.patch` で復元しています。10ファイルすべてで旧側全文と比較元の一致を確認しました。パッチは本文の差分を表し、Gitのモード・名前変更・コピーの履歴は比較対象に含みません。今回の `diff_summary` は全対象で空です。\n\n## 要求と実装を対応付けて読む\n\n| 確認する変更 | 主な参照先 |\n| --- | --- |\n| カード本文・余白から該当行へ移動する | [カード生成とイベント判定](review:skills/walkthrough-review/assets/ui/app.js#L347) |\n| 質問・リンク・図拡大・文章選択を妨げない | 同じカードのクリック分岐図と、[操作の回帰テスト](review:dev/tests/ui_logic.test.cjs#L1) |\n| 全体ヘッダとオフライン表示を削除する | [削除した旧ヘッダ](review:skills/walkthrough-review/assets/templates/index.html#O16) |\n| 概要本文を主役にし、ソースヘッダを小さくする | [概要の構造](review:skills/walkthrough-review/assets/templates/index.html#L44)、[寸法とスクロール](review:skills/walkthrough-review/assets/ui/style.css#L3) |\n| 初期表示を「対象」にし、「すべて」を右端へ置く | [HTMLのフィルタ](review:skills/walkthrough-review/assets/templates/index.html#L33)、[状態の初期値](review:skills/walkthrough-review/assets/ui/app.js#L26) |\n| 対象外の説明を簡潔にし、正常な照合バッジを省く | [表示切替](review:skills/walkthrough-review/assets/ui/app.js#L505)、[解説カード](review:skills/walkthrough-review/assets/ui/app.js#L347) |\n| 対象外一覧から管理・無視対象を省く | [Git判定](review:skills/walkthrough-review/scripts/walkthrough.py#L130)、[表示対象外の共通条件](review:skills/walkthrough-review/assets/ui/app.js#L33) |\n| 要求と検証方法を残す | [要求書の追記](review:dev/docs/DRECTION.md#L77)、[開発用チェック項目](review:dev/README.md#L1) |\n\n## データと操作の流れ\n\nPythonは全件走査を維持したまま、Gitの `check-ignore` で `git_ignored` を付けます。JavaScriptは保存済みの一覧に対し、未選択であること、Gitの無視対象でないこと、`.git` やドットフォルダ配下でないことを同じ関数で判定します。その結果を右ペイン、「対象外」フィルタ、表示件数に共用します。「すべて」は全走査結果を保ち、「対象」ではAIが明示選択したファイルをそのまま表示します。\n\nカードの行範囲が有効なら、行番号ボタンとカード全体が同じナビゲーションへ進みます。子コントロールの操作やカード内の文章選択はその前に分岐させます。行範囲が消失したカードは移動可能とせず、参照警告と質問操作を残します。正常な照合バッジは生成しませんが、未照合・不一致・参照切れの警告処理は維持します。\n\nレイアウトでは、全体ヘッダの撤去と余白の縮小に加え、グリッドの最小行高とサイドバーの最小高を0まで縮められるようにしています。長いツリーが画面全体を押し広げず、各ペイン内でスクロールするための変更です。狭い画面の一覧開閉はメイン見出し横と一覧内のボタンへ移動しました。\n\n## 対象外と、保証しないこと\n\n走査した **529項目**はすべて一覧へ残し、走査警告はありません。本文対象外は519件です。内訳は今回変更のない自作ファイル43件、同梱ライブラリ・ライセンス5件、置換前の `example` 生成物15件、Git管理データ244件、Gitの無視対象である生成物・キャッシュ212件です。今回のUIではこのうち63件を対象外一覧に表示します。対象外は「確認済み・問題なし」を意味しません。\n\nGitがない・非リポジトリ・判定に失敗した場合は、生成を止めず `git_ignored=false` にします。この値はその条件では「Gitの無視対象でないことを確認済み」という保証にはなりません。Gitの判定がなくても、ドットフォルダ配下の表示除外は機能します。ルート直下の `.env` のような**ドットファイル**は、ドットフォルダと同じ理由では自動除外しません。また、Gitで追跡中のファイルはGit自身の規則に従い無視対象にはしません。\n\nこの資料は今回の変更を説明するもので、プロジェクト全体の再監査ではありません。変更のない処理は文脈として全文を収録し、変更点とその保証に解説を集中しています。CSSは既存の1行に多数のルールを置く形式のため、差分行が長く、同じ行を別の観点から説明するカードがあります。\n\n## 検証\n\n今回の修正作業で、Pythonテスト133件中132件成功・1件スキップ、UIロジックテスト27件成功、単独スキルの配布検証成功を確認しました。スキップはWindowsのシンボリックリンク作成権限不足による既存ケースです。\n\n修正したUIはローカルサーバーを使い、概要・コード・対象外フィルタ・カード本文からの移動・質問・内部リンク・図の拡大・旧行へのキーボード移動・警告・狭い画面の一覧開閉を確認しました。長いツリーの画面はみ出しもこの確認で修正しています。\n\nこの差分資料自体についても、全対象の全文・40件の解説・旧新行・図1枚・未解説範囲を自己確認し、最終再ビルド後のハッシュと行参照を検証しました。実ブラウザーでは概要、コード、内部リンク、カード全体からの移動、旧行へのキーボード移動、図の拡大とスクロール連動、図を含む質問文、幅390pxでの一覧開閉とフォーカス復帰を確認しました。コンソールエラーはありません。詳細は同梱の `verification.json` に記録しています。ネットワークを切断した実機検証と実印刷は行っていません。\n\n資料の持ち出しには、`index.html` だけでなく `assets/`、`review.json`、`self-review.md` を含む `example` フォルダ一式を保存してください。再生成に用いた `targets.json`、`comments.json`、`diff.patch`、比較元の説明 `comparison.json` も同梱します。\n",
+  "comments": [
+    {
+      "id": "layout-remove-banner",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "start_line": 16,
+      "end_line": 26,
+      "side": "old",
+      "code_hash": "689d79023d9a3078e94a1308c44f5228b358318157004e10af5480ec3c0ed414",
+      "title": "旧：全体ヘッダを構成していた要素を削除",
+      "body": "旧版ではブランド、レビュー名、モード、オフライン表示が全画面共通の帯に並び、ソースを開いても上部を占有していました。この一式をテンプレートから削除します。レビュー名とモードは[概要のメタ情報](review:skills/walkthrough-review/assets/templates/index.html#L50)へ、狭い画面の一覧開閉は[メインペイン](review:skills/walkthrough-review/assets/templates/index.html#L44)へ移すため、必要な識別情報と操作は失いません。"
+    },
+    {
+      "id": "layout-keep-warning",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "start_line": 15,
+      "end_line": 23,
+      "side": "new",
+      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
+      "title": "ヘッダを消しても、問題の警告は独立して残す",
+      "body": "ページ先頭にはキーボード用のスキップリンクと、通常はhiddenの照合警告が残ります。不一致や未照合などがあればJavaScriptがこの領域を表示します。正常なカードの照合バッジを省いた変更と、確認が必要な警告を消す変更は別であり、この領域は後者を避ける役割を持ちます。"
+    },
+    {
+      "id": "layout-filter-controls",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "start_line": 25,
+      "end_line": 41,
+      "side": "new",
+      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
+      "title": "初期選択と並び順をHTMLと状態の両方で揃える",
+      "body": "フィルタは「対象」「対象外」「すべて」の順になり、対象だけaria-pressed=trueで開始します。[JavaScriptの初期状態](review:skills/walkthrough-review/assets/ui/app.js#L26)もselectedに揃えることで、見た目と実際に並ぶファイルが食い違いません。一覧内のclose-treeは、ヘッダを撤去したあともモバイルの引き出しを閉じるための操作です。対象外の省略は[共通の判定](review:skills/walkthrough-review/assets/ui/app.js#L33)で行い、全件走査自体は維持します。"
+    },
+    {
+      "id": "layout-overview-first",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "start_line": 44,
+      "end_line": 60,
+      "side": "new",
+      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
+      "title": "概要はタイトル・件数を小さくまとめ、本文へ直結する",
+      "body": "固定の大きなキャッチコピーと重複見出しを取り除き、レビュー名・モード・件数をoverview-metaにまとめました。AIが作成した概要を受け取るoverview-contentがその直後に来ます。main-titleはファイルを開くとパスへ切り替わる共通見出しで、英字のkicker用DOMは撤去しています。変更はテンプレートと[表示切替](review:skills/walkthrough-review/assets/ui/app.js#L505)を同時に合わせています。"
+    },
+    {
+      "id": "layout-code-and-exclusions",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "start_line": 62,
+      "end_line": 85,
+      "side": "new",
+      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
+      "title": "コード操作を保ち、解説側の重複見出しを省く",
+      "body": "コードの旧新行凡例・選択範囲・質問ボタン、本文以外の差分表示、独立したスクロール領域は保持します。解説側は見出しと件数・連動ボタンへ整理しました。概要時の対象外一覧には、Git管理・無視対象とドットフォルダ配下を省くことを短く案内します。この説明の実体は表示時の絞り込みであり、保存済みinventoryの削除ではありません。"
+    },
+    {
+      "id": "style-viewport",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "start_line": 3,
+      "end_line": 4,
+      "side": "new",
+      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
+      "title": "画面の高さを内容量に引きずらせない",
+      "body": "workspaceにgrid-template-rows:minmax(0,1fr)、file-sidebarにmin-height:0を設定し、bodyの100dvhとworkspaceのflex:1の内側に各ペインを収めます。長いツリーの最小内容高がグリッド行を押し広げると、overflow:hiddenの外へコードや見出しまで押し出されます。縮小を許可したうえでfile-tree・code-scroll・detail-scrollのoverflow:autoに任せることで、各ペイン内でスクロールできます。CSSは既存の1行に多くのルールを置く形式を保っているため、同じ3行目を説明するカードが複数あります。"
+    },
+    {
+      "id": "style-density",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "start_line": 3,
+      "end_line": 3,
+      "side": "new",
+      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
+      "title": "ヘッダと概要の余白を減らして読める行を増やす",
+      "body": "標準幅のpanel-toolbarは最小91pxから38px、code-toolbarは40pxから29pxへ縮めています。ファイル名は1行のellipsisとし、完全なパスは[JavaScriptがtitle属性へ設定](review:skills/walkthrough-review/assets/ui/app.js#L521)します。overview-metaは折返し可能な小さい文字列・件数の列に変え、概要本文の先頭余白もなくします。コード本文の全文取得・行番号・差分の意味には手を加えていません。"
+    },
+    {
+      "id": "style-click-cue",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "start_line": 3,
+      "end_line": 3,
+      "side": "new",
+      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
+      "title": "移動できるカードだけをポインタと枠で示す",
+      "body": "data-navigable=trueのカードにcursor:pointerとhover時の枠色を付けます。[カード生成](review:skills/walkthrough-review/assets/ui/app.js#L347)が行範囲の有効性を確認して属性を付けるため、消失した参照先まで移動できるようには見せません。ここは操作の手掛かりを担い、クリックの除外条件やナビゲーション自体はJavaScriptが担当します。"
+    },
+    {
+      "id": "style-warning",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "start_line": 4,
+      "end_line": 4,
+      "side": "new",
+      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
+      "title": "正常バッジ用CSSを撤去し、異常表示の区別は維持",
+      "body": "hash-verifiedの装飾は不要になり削除しています。一方、hash-notice、mismatch、needs-review、reference-warning、無効な行ボタンのスタイルは残っています。正常時のノイズを減らしても、未照合・不一致・消えた参照先を見分ける能力は維持する構成です。"
+    },
+    {
+      "id": "style-breakpoints",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "start_line": 5,
+      "end_line": 9,
+      "side": "new",
+      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
+      "title": "各画面幅でも古いヘッダ用の高さを引きずらない",
+      "body": "1600px以上でも概要の上下余白を小さくし、1150px以下ではツールバーのコンパクトな寸法を維持します。950px以下のファイル一覧はtop:0の固定引き出しになり、mobile-tree-toggleを表示します。650px以下はコードと解説を縦に並べ、bodyとworkspaceを内容に合わせて伸ばします。旧ヘッダ70px/59pxに合わせたオフセットを削除しているため、空白帯が残りません。"
+    },
+    {
+      "id": "style-print",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "start_line": 14,
+      "end_line": 14,
+      "side": "new",
+      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
+      "title": "移動した一覧ボタンを印刷に出さない",
+      "body": "全体ヘッダの削除に伴い、印刷時に隠す対象をapp-headerからmobile-tree-toggleへ変更しています。ファイル一覧・質問UI・スクロール制約を印刷用に外す既存の規則は保持します。このレビューで確認したのは画面表示と操作であり、プリンターによる実印刷は検証範囲に含めません。"
+    },
+    {
+      "id": "ui-filter-policy",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 23,
+      "end_line": 37,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "起動時は対象を表示し、対象外一覧だけを絞る",
+      "body": "初期フィルタを `all` から `selected` に変え、起動時のファイル一覧には選ばれた対象を表示します。全件の `inventoryMap` は残し、右ペイン用の `excluded` だけを共通判定で絞っています。\n\n対象外一覧に載せるのは、未選択で、Gitの除外対象でなく、`.git` をパス要素に含まず、ドットフォルダ配下でもない項目です。最後のパス要素はフォルダ判定から外すため、`.gitignore` や `.env` などのドットファイルはそれだけでは隠しません。`.git` はworktreeでファイルになる場合も省きます。旧データに `git_ignored` がなければ未指定を偽として扱い、Gitによる省略は行いません。"
+    },
+    {
+      "id": "ui-tree-preservation",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 134,
+      "end_line": 168,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "表示を絞っても「すべて」と明示対象は失わない",
+      "body": "左の「対象外」も [共通の判定](review:skills/walkthrough-review/assets/ui/app.js#L33) を呼ぶので、右ペインと異なるファイルが出ることを防ぎます。「対象」は `selected` だけで決まり、ドットフォルダ配下やGit除外対象でも、明示的に選ばれたものは表示します。「すべて」にはこの省略条件がなく、走査された項目を検索できます。\n\nその後に検索語を適用してツリーを作る流れは従来どおりです。レビューからのデータ削除や対象選定の変更ではなく、注意して見る対象外一覧の表示条件を変えています。"
+    },
+    {
+      "id": "ui-excluded-counts",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 171,
+      "end_line": 200,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "対象外の表示件数と、レビュー済みという意味を分ける",
+      "body": "一覧が空でも、省略された対象外ファイルが残る可能性があります。このため「すべてのファイルが対象です」という旧表示をやめ、「表示する対象外ファイルはありません」と「すべて」への案内に変更しました。\n\n概要の数値も同じ `excluded` の件数を使い、ラベルを「対象外一覧」にしています。走査したファイル数は全件、レビュー対象数は取り込まれたコードの件数、対象外一覧は省略後の表示件数なので、最後の2つを足して走査総数になるとは限りません。"
+    },
+    {
+      "id": "ui-old-click-entry",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 352,
+      "end_line": 356,
+      "side": "old",
+      "code_hash": "ed8a9a39e73a1288bcd77a909a5baec06385bc8d5d9aa686f8986df75b21b26a",
+      "title": "変更前は行番号ボタンだけが移動の入口だった",
+      "body": "旧版では行範囲を示すボタンにだけ `navigate` を結び付けていました。カードの見出しや本文、余白をクリックしても、この経路からはコードへ移動しません。新版は [同じ移動処理をカード全体からも呼ぶ](review:skills/walkthrough-review/assets/ui/app.js#L362) ようにし、行番号ボタンはキーボードで使える入口として残しています。"
+    },
+    {
+      "id": "ui-card-click-routing",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 347,
+      "end_line": 378,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "カード全体から移動し、内側の操作はそのまま使う",
+      "body": "`jumpToCode` にファイル・開始行・旧新版・終端行・カードIDをまとめ、行番号ボタンとカードクリックで共有します。有効な行範囲のカードだけに `data-navigable` とクリック処理を付けるので、CSSのポインタ表示と実際の移動可否が一致します。\n\nクリック位置がリンク、ボタン、入力欄などの内側なら、親カードは何もしません。ボタン内の文字やアイコンにも `closest` が効くため、質問・図の拡大・別箇所へのリンクにカード側の移動が重なることを避けます。すでに既定動作が抑止された `defaultPrevented` のイベントや、カード内の文章を選択している場合も移動しません。\n\nカード全体を新しいボタンにはせず、既存の行番号ボタンを残しています。キーボードではそのボタンを使い、質問ボタンも独立して操作できます。行範囲が消えたカードには全体クリックを付けず、行番号ボタンを無効にします。",
+      "diagrams": [
+        {
+          "title": "カードクリックをコード移動へ渡す条件",
+          "description": "有効な参照行を持つカードでの分岐です。子の操作・既定動作が抑止されたイベント・カード内の選択テキストではカードの移動処理を止め、それ以外を共通の移動関数へ渡します。",
+          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 460 570\">\n<title>カードクリックをコード移動へ渡す条件</title>\n<desc>有効な参照行のカードで、子の操作や既定動作が抑止されたイベント、カード内の選択テキストは移動処理から除き、それ以外をコード移動へ渡す。</desc>\n<defs><marker id=\"arrow\" markerWidth=\"8\" markerHeight=\"8\" refX=\"7\" refY=\"4\" orient=\"auto\"><path d=\"M0 0 L8 4 L0 8 Z\" fill=\"#475569\"/></marker></defs>\n<g fill=\"none\" stroke=\"#475569\" stroke-width=\"2\" marker-end=\"url(#arrow)\">\n<path d=\"M265 65 V99\"/><path d=\"M265 180 V229\"/><path d=\"M265 310 V359\"/>\n<path d=\"M100 140 H35 V510 H99\"/><path d=\"M100 270 H35\"/>\n</g>\n<g font-family=\"sans-serif\" text-anchor=\"middle\" font-size=\"19\" fill=\"#1f2937\">\n<rect x=\"100\" y=\"20\" width=\"330\" height=\"45\" rx=\"8\" fill=\"#e0f2fe\" stroke=\"#0369a1\"/><text x=\"265\" y=\"49\">有効なカードをクリック</text>\n<rect x=\"100\" y=\"100\" width=\"330\" height=\"80\" rx=\"8\" fill=\"#fff7ed\" stroke=\"#c2410c\"/><text x=\"265\" y=\"132\">リンク・ボタン等の操作？</text><text x=\"265\" y=\"160\">既定動作が抑止済み？</text>\n<text x=\"65\" y=\"129\" font-size=\"17\">はい</text><text x=\"287\" y=\"211\" font-size=\"17\">いいえ</text>\n<rect x=\"100\" y=\"230\" width=\"330\" height=\"80\" rx=\"8\" fill=\"#fff7ed\" stroke=\"#c2410c\"/><text x=\"265\" y=\"262\">カード内の文章を</text><text x=\"265\" y=\"290\">選択している？</text>\n<text x=\"65\" y=\"258\" font-size=\"17\">はい</text><text x=\"287\" y=\"342\" font-size=\"17\">いいえ</text>\n<rect x=\"100\" y=\"360\" width=\"330\" height=\"70\" rx=\"8\" fill=\"#dcfce7\" stroke=\"#15803d\"/><text x=\"265\" y=\"388\" font-weight=\"600\">該当コードへ移動</text><text x=\"265\" y=\"415\" font-size=\"17\">旧/新・範囲・カードIDを渡す</text>\n<rect x=\"100\" y=\"480\" width=\"330\" height=\"65\" rx=\"8\" fill=\"#f1f5f9\" stroke=\"#64748b\"/><text x=\"265\" y=\"507\">カードの移動処理はしない</text><text x=\"265\" y=\"533\" font-size=\"17\">元の操作・選択を維持</text>\n</g>\n</svg>"
+        }
+      ]
+    },
+    {
+      "id": "ui-hash-warning-preserved",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 381,
+      "end_line": 389,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "正常時のバッジだけをなくし、確認が必要な状態は残す",
+      "body": "正常な `verified` の分岐で付けていた「✓ コード照合済み」を削除しました。照合の実行や結果データを削る変更ではありません。不一致・未照合では従来どおり説明と期待Hash／実際のHashを表示し、参照行の消失やリンクの警告も残ります。\n\n上部の [照合警告の集約](review:skills/walkthrough-review/assets/ui/app.js#L49) と、質問文に照合情報を含める処理も維持しています。普段の読書を妨げる正常表示を減らし、再確認が必要な状態を見分けられるようにしています。"
+    },
+    {
+      "id": "ui-file-caption",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 505,
+      "end_line": 536,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "ヘッダを小さくしても、パスと表示できない理由を残す",
+      "body": "削除した英字kickerへのDOM参照を外し、メイン見出しにはファイルパスを表示します。長いパスがCSSで省略される場合に備え、同じ全文を `title` 属性にも設定しています。\n\nコード本文がないときの文言は3通りに分けています。未選択のファイルには「このファイルはレビュー対象外です。」、選択済みだがコードを持たない項目には表示できない旨、一覧にも存在しないパスには参照先が存在しない旨を伝えます。すべてを「対象外」と扱うと取込失敗や壊れた参照を見誤るため、状態の区別は維持しています。"
+    },
+    {
+      "id": "ui-navigation-contract",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 550,
+      "end_line": 598,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "既存の移動処理へ渡すことで、旧新版とカードの選択を保つ",
+      "body": "この移動処理自体は今回の変更対象ではありません。新しいカードクリックもここへ渡すため、URLのhashに行・旧新版・カードIDを記録する既存の動作を引き継ぎます。同じ開始行を持つカードが複数あっても、指定IDと行範囲が一致するカードを優先し、別のカードへ戻りません。\n\n同じファイルの範囲移動では再描画せず、コードの強調と両ペインの位置を更新します。旧行を指定したときは旧側の行だけを強調します。これらの回帰確認は [重複カードと旧新版のテスト](review:dev/tests/ui_logic.test.cjs#L420) にあります。"
+    },
+    {
+      "id": "ui-mobile-close-focus",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "start_line": 681,
+      "end_line": 690,
+      "side": "new",
+      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
+      "title": "全体ヘッダをなくした後も、狭い画面で一覧を閉じられる",
+      "body": "一覧を開く既存処理は、開閉状態を `aria-expanded` に反映し、開いたときに検索欄へフォーカスします。今回追加した閉じるボタンは、一覧の表示クラスを外し、状態を閉じた値へ更新し、開くボタンへフォーカスを戻します。\n\n開くボタンをメインペインの小さなツールバーへ移した構成でも、一覧に覆われたボタンを探さずに戻れる経路です。ブラウザー上では狭い画面での開閉とフォーカスの戻りを別途確認する必要があります。"
+    },
+    {
+      "id": "uitest-source-boundary",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "start_line": 1,
+      "end_line": 26,
+      "side": "new",
+      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
+      "title": "製品のJavaScriptを読み、今回の表示判定も検証する",
+      "body": "テスト用に製品ロジックを複製せず、`app.js` 全体の構文確認と、関数をVMへ読み込む既存の仕組みを使います。今回の追加は `isVisibleExcluded` を読み込む行です。\n\nこのファイルには従来からスクロール連動、質問文、SVG図、差分情報、行移動の検証もあります。それらを今回の新機能とは扱わず、変更で壊していないかを確認する既存の回帰テストとして残しています。"
+    },
+    {
+      "id": "uitest-exclusion-boundaries",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "start_line": 36,
+      "end_line": 46,
+      "side": "new",
+      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
+      "title": "ドットフォルダとドットファイルを混同しない境界条件",
+      "body": "`.git` 自体・その配下・直下と入れ子のドットフォルダ・Git除外対象を対象外一覧から省くことを確認します。一方、`.gitignore` や `.env` のように最後の要素だけがドットで始まるファイルは残します。\n\n`git_ignored` が未指定の旧データと `false` のデータを両方試し、属性追加後も通常の対象外ファイルが消えないことを確認しています。実際のGit無視規則の判定はPython側のテストの担当で、このテストは与えられた属性から表示を決める範囲です。"
+    },
+    {
+      "id": "uitest-dom-model",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "start_line": 170,
+      "end_line": 201,
+      "side": "new",
+      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
+      "title": "クリックの親子関係をテスト用DOMに追加する",
+      "body": "既存の描画用スタブへ `dataset`、親要素、`contains`、`closest` を追加しました。これにより、ボタン内の文字を押したケースや、選択テキストがカード内にあるケースを製品のクリック処理に渡せます。\n\nこれは必要な親子関係だけを再現するモデルです。ブラウザーのイベント配送、実際の文字選択、Tabキー移動、CSSの見た目を再現するものではないため、Nodeの合格だけでは画面の操作確認を代替しません。"
+    },
+    {
+      "id": "uitest-filter-and-empty",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "start_line": 204,
+      "end_line": 254,
+      "side": "new",
+      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
+      "title": "一覧を省略しても、全件へ戻れることを確認する",
+      "body": "通常・ドットフォルダ・Git除外・明示対象を同じ入力へ混ぜ、製品の `renderTree` を対象外／対象／すべての順で呼びます。対象外は共通判定と一致し、明示対象は除外属性があっても残り、「すべて」では全件が戻ることを検証します。`.git/config` を検索して見つかることも確認しています。\n\n空の対象外一覧では、全ファイルがレビュー対象になったと断定せず、表示する項目がないという文と「すべて」への案内が出ることを確認します。これは管理ファイルを省略した結果の空状態でも誤解を招かないための検証です。"
+    },
+    {
+      "id": "uitest-card-scope",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "start_line": 303,
+      "end_line": 335,
+      "side": "new",
+      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
+      "title": "製品のカード描画を通して、新しいクリック入口を確認する",
+      "body": "`withCommentCard` は実際の行範囲解決と `renderComments` を使い、移動先の呼出しを記録して確かめます。カードの余白・見出し・本文を押したとき、ファイル、旧行、終端、カードIDが同じ値で渡ることを確認します。\n\nあわせて移動可能を示す属性が付くことと、正常な照合バッジが生成されないことを確認しています。移動後のスクロール自体は別の既存テストとブラウザー確認の範囲です。"
+    },
+    {
+      "id": "uitest-card-operations",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "start_line": 337,
+      "end_line": 375,
+      "side": "new",
+      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
+      "title": "子の操作、文章選択、消えた参照をカード移動から守る",
+      "body": "子ボタン内の要素やリンクの文字を押した場合、カード側の移動が呼ばれないことを確認します。カード内の文章選択と、すでに `defaultPrevented` が付いたイベントも同様です。行番号ボタンには利用可能な状態と移動先を説明するラベルが残り、既存のキーボード入口を保つことを検証します。\n\n参照行が消えた場合にはカード全体のハンドラも移動可能属性も付けず、行番号ボタンを無効にします。それでも不一致・参照警告を表示し、解説への質問は実行できることを確認しています。実際のキー入力やイベントの伝播はブラウザー確認で補います。"
+    },
+    {
+      "id": "uitest-template-ids",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "start_line": 505,
+      "end_line": 510,
+      "side": "new",
+      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
+      "title": "削除・移動した画面部品とJavaScriptの接続を照合する",
+      "body": "この既存テストはテンプレートのID重複と、JavaScriptが直接参照するIDの欠落を検出します。今回の英字kicker削除や `close-tree` 追加でも、片側だけ直して起動時に例外になる変更を検出できます。\n\nIDが存在することの検査であり、部品の配置、文字切れ、フォーカス順序までは保証しません。ヘッダの高さや狭い画面の操作は表示確認で評価します。"
+    },
+    {
+      "id": "py-ignore-query",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "start_line": 130,
+      "end_line": 147,
+      "side": "new",
+      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
+      "title": "Gitの無視規則を、一覧表示用の情報として取り込む",
+      "body": "今回追加した `annotate_git_ignored` は、各項目へ `git_ignored` を付けるだけの処理です。対象一覧から項目を削除せず、`selected` にも触れません。これにより「対象外一覧を整理すること」と「レビューするファイルを決めること」を分けています。\n\n`git -C <project> check-ignore --stdin -z` に相対パスを一括で渡すため、ルートと子フォルダの `.gitignore`、否定規則、Gitの追跡状態をGit自身に判定させられます。追跡済みファイルは、名前が無視パターンに一致しても無視対象になりません。入力・出力をNUL区切りにし、空白や日本語を含む名前を行分割で取り違えないようにしています。項目がなければGitは起動しません。\n\n表示上の除外に使うのは、この判定結果です。`.git` やドットで始まるフォルダ配下かどうかは画面側で別に判定します。Gitの規則との一致は[実Gitを使うテスト](review:dev/tests/test_walkthrough.py#L177)で確認しています。"
+    },
+    {
+      "id": "py-ignore-fallback",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "start_line": 148,
+      "end_line": 155,
+      "side": "new",
+      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
+      "title": "判定できない場合も、全件一覧とコードの生成を続ける",
+      "body": "Gitが見つからないなどの `OSError` と15秒のタイムアウトでは処理を戻します。Gitの終了値は0（該当あり）と1（該当なし）だけを受け付け、それ以外の終了時に得られた部分出力は利用しません。成功した場合だけ、出力されたパス集合に基づいて `git_ignored` を更新します。\n\n[呼び出しの冒頭](review:skills/walkthrough-review/scripts/walkthrough.py#L138)で全項目を `false` にしているため、判定失敗によってファイルが対象外一覧から隠れることはありません。Gitがない環境でも元からあるレビュー生成機能は使えます。一方、この値だけでは「非無視と確認できた」と「判定できなかった」を区別できず、専用警告も追加されません。その環境ではGitの無視対象による絞り込みは効かない、という範囲の実装です。\n\nこの継続方針と、失敗時の部分出力を捨てる挙動は[障害注入テスト](review:dev/tests/test_walkthrough.py#L213)で確認しています。"
+    },
+    {
+      "id": "py-scan-completeness",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "start_line": 158,
+      "end_line": 221,
+      "side": "new",
+      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
+      "title": "走査を省略せず、完成した一覧に表示用の判定を足す",
+      "body": "既存の `scan_project` は隠しファイルや `.git` も名前で省かず、ディレクトリをたどって一覧を作ります。リンクは追跡せず、走査不能な項目も状態と理由を残します。今回の追加点は末尾の219行で、全件を列挙した後にGitの無視判定を付けることです。\n\n対象外一覧から見えなくなった項目も `inventory` に残るので、「すべて」の表示や自己確認資料で全体を追えます。また、[対象リストの取り込み](review:skills/walkthrough-review/scripts/walkthrough.py#L438)は `git_ignored` で拒否していません。AIが明示的に選んだ無視対象ファイルも、通常の本文検証を通ればレビューできます。\n\nこの関数は `scan` と `build` の両方から使われます。保存済みデータへ解説だけを結合する `merge` は元プロジェクトを再走査しないため、新しい無視設定を取り込むには再ビルドが必要です。全走査を維持する既存保証は[対象外・隠し項目の保持テスト](review:dev/tests/test_walkthrough.py#L142)、明示選択を維持する追加保証は[無視対象の取込テスト](review:dev/tests/test_walkthrough.py#L202)で読めます。"
+    },
+    {
+      "id": "py-deleted-ignore",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "start_line": 407,
+      "end_line": 436,
+      "side": "new",
+      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
+      "title": "走査では見つからない削除済みファイルも判定する",
+      "body": "差分レビューでは、現在のディスクにない削除済みファイルをパッチから `inventory` へ補います。この追加は全件走査の後なので、走査末尾のGit判定だけでは `git_ignored` が付きません。今回435〜436行で、パッチの取り込みが終わってから `status == \"deleted\"` の項目だけをまとめて判定するようにしました。\n\n判定対象は削除ファイルに限るため、通常ファイルの一覧をもう一度Gitへ渡す必要はありません。基準は過去の `.gitignore` ではなく、変更後プロジェクトの現在の無視規則とGitの追跡状態です。旧コード本文は引き続きパッチから復元し、無視判定を本文の取得・差分照合の代わりには使いません。\n\n削除済みパスが現在の無視規則に該当するケースは[追加テストの末尾](review:dev/tests/test_walkthrough.py#L208)で確認しています。"
+    },
+    {
+      "id": "test-ignore-rules",
+      "file": "dev/tests/test_walkthrough.py",
+      "start_line": 177,
+      "end_line": 201,
+      "side": "new",
+      "code_hash": "d37367de06d856afa7b1a1f21675fe2ce62aa0bc9d8400949f57bacc5a828e68",
+      "title": "複数のGit規則を実リポジトリで確かめる",
+      "body": "今回追加したテストは、専用の一時プロジェクトを `git init` し、根元と `src` の二つの `.gitignore` を作ります。`*.log` と否定規則、ディレクトリ全体、ルート限定パターン、子フォルダ側の規則を同時に用意し、無視される項目と残る項目を比較します。日本語と空白を含むファイル名も判定対象です。\n\n`tracked.log` は無視パターンに一致しても `git add -f` で追跡対象にし、`git_ignored == false` を確認します。単純な拡張子判定や独自のglob実装で追跡済みファイルまで隠す退行を検出できます。さらに `src` 自体を走査ルートにして、Gitの親規則と相対パスの扱いが崩れないことも確認します。\n\n実Gitがない環境ではこのケースを明示的にskipします。Gitのない環境で生成を続行できることは、[別の障害注入テスト](review:dev/tests/test_walkthrough.py#L213)が担当します。"
+    },
+    {
+      "id": "test-ignore-boundaries",
+      "file": "dev/tests/test_walkthrough.py",
+      "start_line": 202,
+      "end_line": 211,
+      "side": "new",
+      "code_hash": "d37367de06d856afa7b1a1f21675fe2ce62aa0bc9d8400949f57bacc5a828e68",
+      "title": "表示の除外が本文の選択や削除差分を壊さないことを確認する",
+      "body": "前半はGitの無視対象である日本語名の `.log` をレビュー対象として明示し、本文が丸ごと取り込まれ、一覧上では `selected` と `git_ignored` が両方とも `true` になることを確認します。この二つの値は互いを打ち消す分類ではありません。\n\n後半は現在存在しない `deleted.log` の削除パッチを渡し、補完された一覧項目にも `git_ignored` が付くことを確認します。通常の走査だけを修正して差分レビュー側の補完を忘れた場合を検出するためのケースです。本文選択の保証と、削除ファイルの表示判定の保証を、実際の `create_review` の結果で確かめています。"
+    },
+    {
+      "id": "test-ignore-fallback",
+      "file": "dev/tests/test_walkthrough.py",
+      "start_line": 213,
+      "end_line": 227,
+      "side": "new",
+      "code_hash": "d37367de06d856afa7b1a1f21675fe2ce62aa0bc9d8400949f57bacc5a828e68",
+      "title": "Git判定の障害がレビュー全体を止めないことを検証する",
+      "body": "新しい外部プロセス呼び出しに対し、実行ファイル不在、タイムアウト、Gitがエラー終了する場合の三つを差し込みます。OSやユーザーのGit設定を壊す代わりに、`subprocess.run` の応答だけを置き換えて再現しています。\n\nどのケースでも既存の5項目が一覧に残り、選択したコード全文が取り込まれ、全項目の `git_ignored` が `false` のままであることを確認します。終了値128のケースは意図的に `.env` という部分出力も返すため、失敗したGitの出力を採用して項目を隠してしまう実装も検出できます。\n\nここで保証するのは生成の継続と項目保持です。Gitが使えないときに `.gitignore` の規則を別実装で再現する、という保証ではありません。"
+    },
+    {
+      "id": "docs-readme-layout",
+      "file": "dev/README.md",
+      "start_line": 66,
+      "end_line": 69,
+      "side": "new",
+      "code_hash": "665a27599c796bac718bcea2cfcaa1981c4c44edb34054f057100d8adf1778cc",
+      "title": "見た目の変更を、実ブラウザーで確認する項目に落とす",
+      "body": "今回の変更は、概要やツリーが単に表示されることから、**概要本文がすぐ読める配置**と**最初にレビュー対象が見える状態**まで受入条件を具体化しています。全走査結果は「すべて」に残し、右ペインと「対象外」フィルタにだけ省略規則を適用するため、表示を減らしても収集漏れと混同しません。対象外案内の文言もここで固定し、今後のUI調整で戻らないようにします。[保存データと表示範囲の区別](review:dev/docs/data-format.md#L36)と合わせて確認します。"
+    },
+    {
+      "id": "docs-readme-interactions",
+      "file": "dev/README.md",
+      "start_line": 73,
+      "end_line": 81,
+      "side": "new",
+      "code_hash": "665a27599c796bac718bcea2cfcaa1981c4c44edb34054f057100d8adf1778cc",
+      "title": "カード全体のクリックと、内側の操作を両立させる受入確認",
+      "body": "カードをクリックできるようにすると、本文の参照リンクや質問・図拡大のクリックまで親が拾う可能性があります。そこで本文・余白からの行ジャンプを確認するだけでなく、子の操作、文章の選択、行番号ボタンによるキーボード操作を保つことも明記しました。正常な照合表示を消しても、不一致・未記録・消失した行の警告は確認対象です。既存の双方向スクロール、狭い画面、同梱素材だけでの閲覧も同じチェックリストに残るため、密度の改善と機能の維持を一緒に検証できます。"
+    },
+    {
+      "id": "docs-requirements-density",
+      "file": "dev/docs/DRECTION.md",
+      "start_line": 77,
+      "end_line": 87,
+      "side": "new",
+      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
+      "title": "コードと解説に表示領域を戻す、今回のUI要求",
+      "body": "大きな全体ヘッダ、定型の概要メッセージ、正常時の照合表示を減らし、レビュー作業そのものを画面の中心にする要求を追加しました。操作面ではカード全体を行ジャンプの入口にし、「対象」を初期選択にします。一方でファイル一覧のモバイル開閉、カード内の質問・リンク・図拡大、キーボード操作、要確認の警告は維持します。削除する情報と残す機能を一緒に記録することで、単なる縮小で必要な操作まで失うことを防ぐ設計条件になっています。"
+    },
+    {
+      "id": "docs-requirements-exclusions",
+      "file": "dev/docs/DRECTION.md",
+      "start_line": 88,
+      "end_line": 89,
+      "side": "new",
+      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
+      "title": "対象外一覧の省略と、全ファイル走査の保証を分ける",
+      "body": "追加の絞り込みは、`.git`、Gitの無視対象、ドットフォルダ配下を**対象外一覧から省く**要求です。走査そのものを打ち切る要求ではなく、「すべて」には全項目を残します。右ペインと「対象外」フィルタで同じ条件を使うため、両方の件数と内容が一致します。また表示と操作は実ブラウザーで確認し、ローカルHTMLを直接開けない環境ではローカルサーバーによる確認を認めています。[開発用の確認項目](review:dev/README.md#L66)へつながる要求です。"
+    },
+    {
+      "id": "docs-data-git-ignore",
+      "file": "dev/docs/data-format.md",
+      "start_line": 36,
+      "end_line": 44,
+      "side": "new",
+      "code_hash": "0da7ee7f5d7bb3dcef32a10d1a8c8673ee8c71fd1fd9bcc6e9171462f7c21b05",
+      "title": "git_ignoredは対象選定ではなく、対象外一覧を整える補助情報",
+      "body": "`selected` は本文の取込対象、追加された `git_ignored` は生成時点でのGit無視判定であり、役割が異なります。Gitが利用できない、リポジトリでない、判定が失敗した場合は `false` にして生成を続け、旧データの未記録も画面では同じ扱いにします。このためGitを必須依存にせず、追跡済みファイルも誤って無視対象にしません。省略は対象外一覧とそのフィルタに限られ、明示的に選んだ無視対象ファイルの本文取込や「すべて」の表示は維持されます。なお `false` は判定不能時にも使うため、必ずしもGitが明示的に無視対象外と回答した証拠ではありません。"
+    },
+    {
+      "id": "docs-skill-optional-git",
+      "file": "skills/walkthrough-review/SKILL.md",
+      "start_line": 10,
+      "end_line": 12,
+      "side": "new",
+      "code_hash": "4906b52eecb5eab833817d4fbfeb961d3bffc7b00772e0d46b71721966e3c960",
+      "title": "Gitの追加利用を案内し、基本の生成条件を維持する",
+      "body": "以前はGitの用途を差分の自動取得だけと説明していましたが、今回から利用可能な場合は無視設定も読んで対象外一覧を絞ります。これは表示を補助する任意の処理で、Python 3.9以上と標準ライブラリだけで通常のレビュー生成を進める構成は維持します。スキル内のCLIを絶対パスで呼び出す方針も変わりません。Git不在時や判定失敗時に一覧を保持する扱いは、[データ形式の規定](review:dev/docs/data-format.md#L39)に対応します。"
+    }
+  ]
+}

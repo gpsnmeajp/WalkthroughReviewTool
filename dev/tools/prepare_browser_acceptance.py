@@ -125,6 +125,69 @@ def hash_comments(review):
     }
 
 
+def diagram_comments(review):
+    """縦長の分岐図と横長の呼出し図で、表示・拡大・質問・スクロールを確認する。"""
+    flow = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 420">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#334155"/></marker></defs>
+  <g font-family="sans-serif" font-size="16" text-anchor="middle">
+    <rect x="140" y="20" width="160" height="48" rx="8" fill="#e0f2fe" stroke="#0369a1"/>
+    <text x="220" y="50">valueを受け取る</text>
+    <path d="M220 68 V105 M140 160 H80 V240 M300 160 H360 V240" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M220 108 L300 160 L220 212 L140 160 Z" fill="#fef3c7" stroke="#a16207"/>
+    <text x="220" y="166">value &lt; 0 ?</text>
+    <text x="95" y="148">はい</text><text x="345" y="148">いいえ</text>
+    <rect x="10" y="245" width="140" height="64" rx="8" fill="#fee2e2" stroke="#b91c1c"/>
+    <text x="80" y="273">ValueError</text><text x="80" y="295">を送出</text>
+    <rect x="290" y="245" width="140" height="64" rx="8" fill="#dcfce7" stroke="#15803d"/>
+    <text x="360" y="273">value × 2</text><text x="360" y="295">を返す</text>
+    <text x="220" y="365">負数は拒否し、0以上だけを計算する</text>
+    <text x="220" y="393">図と行3〜5の分岐を照合</text>
+  </g>
+</svg>"""
+    calls = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 150">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#334155"/></marker></defs>
+  <g font-family="sans-serif" font-size="16" text-anchor="middle">
+    <rect x="10" y="45" width="100" height="60" rx="8" fill="#e0f2fe" stroke="#0369a1"/><text x="60" y="81">run</text>
+    <rect x="200" y="45" width="250" height="60" rx="8" fill="#dcfce7" stroke="#15803d"/><text x="325" y="81">double_nonnegative</text>
+    <rect x="540" y="45" width="130" height="60" rx="8" fill="#e0f2fe" stroke="#0369a1"/><text x="605" y="81">print / return</text>
+    <path d="M110 75 H195 M450 75 H535" fill="none" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="155" y="35">value</text><text x="495" y="35">doubled</text>
+  </g>
+</svg>"""
+    first = comment(review, "flow-branch", "flow.py", 1, 5, "負数を拒否してから倍にする",
+                    "負数は例外で終了し、0以上なら倍の値を返します。下の図と条件分岐を照合してください。")
+    first["diagrams"] = [{
+        "title": "値の検証と計算",
+        "description": "valueが負数ならValueError、0以上ならvalueの2倍を返す二つの経路。",
+        "svg": flow,
+    }]
+    second = comment(review, "flow-calls", "flow.py", 7, 10, "検証済みの値を出力する",
+                     "runは計算を委譲し、返された値を表示して呼び出し元へ返します。")
+    second["diagrams"] = [{
+        "title": "呼び出しと値の受け渡し",
+        "description": "runからdouble_nonnegativeへvalueを渡し、返り値doubledをprintして返す。",
+        "svg": calls,
+    }]
+    return {
+        "overview": "# SVG図付き解説\n\n[分岐](review:flow.py#L3)と[呼び出し](review:flow.py#L8)を図で確認します。"
+                    "図の拡大、同じIDを持つ別図の矢印、質問文に含まれるSVG、スクロール連動を確認してください。",
+        "comments": [first, second],
+    }
+
+
+def metadata_comments(review):
+    return {
+        "overview": "# 本文以外の差分\n\nrun.shは実行権限の変更、moved.pyは名前の変更、empty.txtは空ファイルの追加です。"
+                    "追加・削除行が0でも、ファイル上部と質問文で変更内容を確認できます。",
+        "comments": [
+            comment(review, "mode-change", "run.sh", 1, 2, "スクリプトに実行権限を付ける",
+                    "本文は同一ですが、100644から100755へ変わります。"),
+            comment(review, "rename-change", "moved.py", 1, 1, "ファイル名を変更する",
+                    "old.pyからmoved.pyへ移動しています。コード本文は変わりません。"),
+        ],
+    }
+
+
 def prepare():
     initialize_output()
     fixtures = ROOT / "tests" / "fixtures"
@@ -155,6 +218,24 @@ def prepare():
     save_json(OUTPUT / "hash-targets.json", hash_targets)
     save_json(OUTPUT / "hash-targets-rebuild.json", {"title": "Hashの段階確認", "files": ["main.py"]})
     write_fixture("hash", hash_project, hash_targets, hash_comments)
+    diagram_project = OUTPUT / "projects" / "diagrams"
+    save(diagram_project / "flow.py",
+         'def double_nonnegative(value):\n    """0以上の値を倍にする。"""\n'
+         '    if value < 0:\n        raise ValueError("negative value")\n    return value * 2\n\n'
+         'def run(value):\n    doubled = double_nonnegative(value)\n    print(doubled)\n    return doubled\n')
+    write_fixture("diagrams", diagram_project, {"title": "SVG図付きの解説", "files": ["flow.py"]}, diagram_comments)
+    metadata_project = OUTPUT / "projects" / "metadata"
+    save(metadata_project / "run.sh", "#!/bin/sh\npython moved.py\n")
+    save(metadata_project / "moved.py", 'print("ready")\n')
+    save(metadata_project / "empty.txt", "")
+    metadata_patch = (
+        "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n"
+        "diff --git a/old.py b/moved.py\nsimilarity index 100%\nrename from old.py\nrename to moved.py\n"
+        "diff --git a/empty.txt b/empty.txt\nnew file mode 100644\n"
+    )
+    write_fixture("metadata", metadata_project,
+                  {"title": "権限・名前・空ファイルの差分", "files": ["run.sh", "moved.py", "empty.txt"]},
+                  metadata_comments, metadata_patch)
     save_json(OUTPUT / "expectations.json", {
         "full": {"mode": "full", "targets": 2, "excluded": 2, "comments": 4, "verified": 4},
         "diff": {"mode": "diff", "targets": 3, "excluded": 2, "comments": 4, "verified": 4, "deleted": "legacy.py", "deleted_lines": 3},
@@ -165,9 +246,13 @@ def prepare():
         "hash_initial": {"targets": 2, "comments": 3, "verified": 3, "main_lines": 12},
         "hash_mutated_source_only": {"snapshot_main_lines": 12, "source_main_lines": 3, "verified": 3, "html_unchanged": True},
         "hash_rebuilt": {"targets": 1, "main_lines": 3, "mismatch": 2, "missing_range": 1, "unattached": 1, "excluded": 1},
+        "diagrams": {"targets": 1, "comments": 2, "diagrams": 2, "verified": 2,
+                     "expected": "Two static SVGs, readable enlargement, diagram source in prompt, synchronized scrolling after load"},
+        "metadata": {"targets": 3, "comments": 2, "verified": 2, "added_rows": 0, "removed_rows": 0,
+                     "expected": "100644 to 100755; old.py to moved.py; empty.txt added"},
     })
     print(f"Prepared: {OUTPUT}")
-    for name in ("full", "diff", "clipboard-failure", "unmerged", "no-targets", "long", "hash"):
+    for name in ("full", "diff", "clipboard-failure", "unmerged", "no-targets", "long", "hash", "diagrams", "metadata"):
         print((OUTPUT / name / "index.html").as_uri())
     print("\nNext: python tools/prepare_browser_acceptance.py hash-mutate")
     print("Reload hash/index.html: it must still show 12 original lines and 3 verified comments.")

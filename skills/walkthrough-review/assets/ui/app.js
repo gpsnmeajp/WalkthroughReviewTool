@@ -22,13 +22,19 @@
 
   const fileMap = new Map(data.files.map((file) => [file.path, file]));
   const inventoryMap = new Map(data.inventory.map((item) => [item.path, item]));
-  const excluded = data.inventory.filter((item) => !item.selected);
-  const state = { file: null, path: null, filter: "all", sync: true, source: null, anchors: [], scrollMaps: null, commentEntries: [], activeComment: -1, question: null, rowElements: [], rowMaps: { old: new Map(), new: new Map() }, suppressUntil: 0, frame: null };
+  const excluded = data.inventory.filter(isVisibleExcluded);
+  const state = { file: null, path: null, filter: "selected", sync: true, source: null, anchors: [], scrollMaps: null, commentEntries: [], activeComment: -1, question: null, rowElements: [], rowMaps: { old: new Map(), new: new Map() }, suppressUntil: 0, frame: null };
   const statuses = { file: "通常ファイル", deleted: "削除済み", symlink: "シンボリックリンク", unreadable: "読み取り不可", error: "読み取りエラー", binary: "バイナリ", directory: "ディレクトリ", other: "特殊ファイル" };
   const statusLabel = (status) => statuses[status] || status || "ファイル";
   const prettySize = (size) => typeof size !== "number" ? "サイズ不明" : size < 1024 ? `${size} B` : size < 1048576 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1048576).toFixed(1)} MB`;
   const rangeLabel = (start, end, side = "new") => `${side === "old" ? "旧 " : ""}L${start}${end > start ? `–${end}` : ""}`;
   const announce = (text) => { $("live-status").textContent = text; };
+
+  function isVisibleExcluded(item) {
+    const parts = item.path.split("/");
+    // 管理用フォルダやGitの除外対象は全一覧に残し、確認したい対象外一覧からだけ隠す。
+    return !item.selected && !item.git_ignored && !parts.includes(".git") && !parts.slice(0, -1).some((part) => part.startsWith("."));
+  }
 
   function commentHashInfo(comment, file) {
     const status = ["verified", "mismatch", "missing"].includes(comment.hash_status) ? comment.hash_status : "missing";
@@ -131,7 +137,7 @@
     const root = { folders: new Map(), files: [] };
     let count = 0;
     for (const item of data.inventory) {
-      if (state.filter === "selected" && !item.selected || state.filter === "excluded" && item.selected) continue;
+      if (state.filter === "selected" && !item.selected || state.filter === "excluded" && !isVisibleExcluded(item)) continue;
       if (query && !item.path.toLocaleLowerCase().includes(query)) continue;
       count++;
       const parts = item.path.split("/");
@@ -176,7 +182,7 @@
     }
     if (!excluded.length) {
       const empty = node("li", "empty-state");
-      empty.append(node("span", "empty-icon", "✓"), node("strong", "", "すべてのファイルが対象です"), node("p", "", "走査した全ファイルがレビュー対象に含まれています。"));
+      empty.append(node("span", "empty-icon", "✓"), node("strong", "", "表示する対象外ファイルはありません"), node("p", "", "全ファイルは左の「すべて」から確認できます。"));
       list.append(empty);
     }
   }
@@ -187,7 +193,7 @@
     $("project-name").textContent = data.project_name || "PROJECT";
     $("inventory-count").textContent = data.inventory.length;
     $("mode-badge").textContent = data.mode === "diff" ? "差分レビュー" : "全体レビュー";
-    for (const [value, label, className] of [[data.inventory.length, "走査したファイル", ""], [data.files.length, "レビュー対象", " target"], [excluded.length, "対象外", ""]]) {
+    for (const [value, label, className] of [[data.inventory.length, "走査したファイル", ""], [data.files.length, "レビュー対象", " target"], [excluded.length, "対象外一覧", ""]]) {
       const stat = node("div", `stat${className}`);
       stat.append(node("strong", "", value), node("span", "", label));
       $("project-stats").append(stat);
@@ -243,8 +249,15 @@
     return { side, start, end: end < 0 ? start : end };
   }
 
+  function renderDiffSummary(file) {
+    const summary = Array.isArray(file.diff_summary) ? file.diff_summary : [];
+    $("diff-summary").hidden = !summary.length;
+    $("diff-summary-list").replaceChildren(...summary.map((item) => node("li", "", item)));
+  }
+
   function renderCode(file) {
     const fragment = document.createDocumentFragment(), highlighted = highlightedLines(file), isDiff = data.mode === "diff";
+    renderDiffSummary(file);
     state.rowElements = [];
     state.rowMaps = { old: new Map(), new: new Map() };
     file.rows.forEach((row, index) => {
@@ -286,6 +299,51 @@
     $("code-scroll").scrollLeft = 0;
   }
 
+  /* SVGは画像として隔離し、MarkdownのHTML許可やページのDOMを広げない。 */
+  function renderDiagram(diagram, expanded = false) {
+    const value = diagram && typeof diagram === "object" ? diagram : {};
+    const title = value.title || "図";
+    const description = value.description || "図の説明がありません。";
+    const figure = node("figure", `comment-diagram${expanded ? " is-expanded" : ""}`);
+    const caption = node("figcaption");
+    caption.append(node("strong", "diagram-title", title), node("p", "diagram-description", description));
+    const frame = node("div", "diagram-image-frame"), image = node("img", "comment-diagram-image");
+    image.alt = description;
+    image.decoding = "async";
+    const error = node("p", "diagram-error", "図を表示できませんでした。上の説明を確認し、エージェントに図の再生成を依頼してください。");
+    error.setAttribute("role", "status");
+    error.hidden = true;
+    let enlarge;
+    if (!expanded) {
+      enlarge = node("button", "text-button diagram-enlarge", "図を拡大 ↗");
+      enlarge.type = "button";
+      enlarge.setAttribute("aria-label", `${title}を拡大`);
+      enlarge.addEventListener("click", () => openDiagram(value));
+    }
+    image.addEventListener("load", () => {
+      requestAnimationFrame(refreshAnchors);
+    });
+    const fail = () => {
+      image.hidden = true;
+      error.hidden = false;
+      if (enlarge) enlarge.disabled = true;
+      requestAnimationFrame(refreshAnchors);
+    };
+    image.addEventListener("error", fail);
+    frame.append(image, error);
+    figure.append(caption, frame);
+    if (enlarge) figure.append(enlarge);
+    if (typeof value.svg === "string" && value.svg.trim()) image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value.svg)}`;
+    else fail();
+    return figure;
+  }
+
+  function openDiagram(diagram) {
+    $("diagram-dialog-title").textContent = diagram.title || "図";
+    $("diagram-dialog-content").replaceChildren(renderDiagram(diagram, true));
+    $("diagram-dialog").showModal();
+  }
+
   function renderComments(file) {
     const comments = [...(file.comments || [])].sort((a, b) => rowIndexFor(a.start_line, a.side || "new") - rowIndexFor(b.start_line, b.side || "new"));
     $("comments-view").replaceChildren();
@@ -301,7 +359,18 @@
       link.type = "button";
       link.disabled = invalidRange;
       link.setAttribute("aria-label", `${rangeLabel(comment.start_line, comment.end_line || comment.start_line, comment.side)} のコードへ移動`);
-      link.addEventListener("click", () => navigate(file.path, comment.start_line, comment.side || "new", comment.end_line, comment.id));
+      const jumpToCode = () => navigate(file.path, comment.start_line, comment.side || "new", comment.end_line, comment.id);
+      link.addEventListener("click", jumpToCode);
+      if (!invalidRange) {
+        card.dataset.navigable = "true";
+        card.addEventListener("click", (event) => {
+          // 子の質問・リンク・図拡大と、説明文を選択してコピーする操作を優先する。
+          if (event.defaultPrevented || event.target.closest("a,button,input,textarea,select,summary")) return;
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed && (card.contains(selection.anchorNode) || card.contains(selection.focusNode))) return;
+          jumpToCode();
+        });
+      }
       top.append(node("span", "comment-index", `${String(index + 1).padStart(2, "0")} / WALKTHROUGH`), link);
       const body = node("div", "markdown"); renderMarkdown(comment.body, body);
       const actions = node("div", "comment-actions"), ask = node("button", "text-button", "この解説に質問 ↗");
@@ -315,10 +384,12 @@
         const hashes = node("dl", "hash-values");
         hashes.append(node("dt", "", "作成時"), node("dd", "", hash.expected || "未保存"), node("dt", "", "表示中"), node("dd", "", hash.actual || "未取得"));
         notice.append(hashes); card.append(notice);
-      } else card.append(node("span", "hash-verified", "✓ コード照合済み"));
+      }
       if (invalidRange) card.append(node("p", "reference-warning", "参照先の行範囲が存在しません。コードへの移動はできませんが、この解説について質問できます。"));
       if (comment.link_warning) card.append(node("p", "reference-warning", `参照リンクの確認: ${comment.link_warning}`));
-      card.append(body, actions);
+      card.append(body);
+      if (Array.isArray(comment.diagrams)) for (const diagram of comment.diagrams) card.append(renderDiagram(diagram));
+      card.append(actions);
       $("comments-view").append(card);
       state.commentEntries.push({ comment, card, invalidRange, ...range });
     });
@@ -444,11 +515,10 @@
     $("excluded-view").hidden = !!file;
     $("comments-view").hidden = !file;
     $("sync-toggle").hidden = !file;
-    $("detail-kicker").textContent = file ? "CODE WALKTHROUGH" : "REVIEW COVERAGE";
     $("detail-title").firstChild.textContent = file ? "コードの解説 " : "対象外のファイル ";
     $("detail-count").textContent = file ? (file.comments || []).length : excluded.length;
-    $("main-kicker").textContent = path ? file ? "SOURCE / FULL CONTENT" : "FILE INFORMATION" : "PROJECT OVERVIEW";
     $("main-title").textContent = path || "プロジェクト概要";
+    $("main-title").title = path || "プロジェクト概要";
     $("file-meta").textContent = "";
     $("detail-footer").textContent = file ? "行範囲に対応した解説 · 質問はエージェントへ" : "全ファイル一覧と対象リストを照合";
     if (file) {
@@ -461,7 +531,7 @@
     } else if (path) {
       const item = inventoryMap.get(path);
       $("unavailable-title").textContent = item ? item.selected ? "コードを表示できないファイル" : "レビュー対象外のファイル" : "ファイルが見つかりません";
-      $("unavailable-message").textContent = item ? "このファイルはプロジェクト全体の一覧に含まれています。コード本文は、このレビューに取り込まれていません。" : "この参照先は、保存されたプロジェクト一覧に存在しません。";
+      $("unavailable-message").textContent = item ? item.selected ? "このファイルのコードを表示できません。" : "このファイルはレビュー対象外です。" : "この参照先は、保存されたプロジェクト一覧に存在しません。";
       $("unavailable-details").replaceChildren();
       if (item) for (const [label, value] of [["パス", item.path], ["状態", statusLabel(item.status)], ["サイズ", prettySize(item.size)]]) $("unavailable-details").append(node("dt", "", label), node("dd", "", value));
     }
@@ -552,6 +622,12 @@
       const hash = commentHashInfo(comment, file);
       return [`解説 ${comment.id}: ${hash.label}`, `  作成時コードHash: ${hash.expected || "未保存"}`, `  表示中コードHash: ${hash.actual || "未取得"}`, ...(comment.range_status === "missing" ? ["  元の参照行範囲は現在のスナップショットに存在しません。"] : []), ...(comment.link_warning ? [`  参照リンクの警告: ${comment.link_warning}`] : [])];
     });
+    const diagramDetails = related.flatMap((comment) => (Array.isArray(comment.diagrams) ? comment.diagrams : []).flatMap((diagram) => {
+      const svg = typeof diagram?.svg === "string" ? diagram.svg : "";
+      const diagramFence = "`".repeat((svg.match(/`+/g) || []).reduce((longest, item) => Math.max(longest, item.length), 2) + 1);
+      return [`解説 ${comment.id} の図: ${diagram?.title || "図"}`, `説明: ${diagram?.description || "図の説明がありません。"}`, `${diagramFence}svg`, svg || "（図のSVGがありません）", diagramFence, ""];
+    }));
+    const diffSummary = Array.isArray(file.diff_summary) ? file.diff_summary : [];
     return [
       "以下のウォークスルーレビューについて質問します。",
       "", `レビュー: ${data.title || data.project_name}`, `プロジェクト: ${data.project_root || data.project_name}`,
@@ -565,8 +641,10 @@
       `  表示中の旧版Hash: ${(file.code_hashes || {}).old || "未取得"}`,
       ...hashDetails,
       ...(related.some((comment) => commentHashInfo(comment, file).status !== "verified") ? ["注意: 未照合またはコード不一致の解説があります。説明と行範囲の対応が正しいと仮定しないでください。"] : []),
+      ...(diffSummary.length ? ["", "本文以外の差分:", ...diffSummary.map((item) => `- ${item}`)] : []),
       "", "質問:", question.trim(), "",
       ...(context.comment ? [`対象の解説（${context.comment.id}）: ${context.comment.title || ""}`, context.comment.body || "", ""] : []),
+      ...diagramDetails,
       "該当コード（+ は追加、- は削除。行番号はレビュー生成時点）:",
       fence, code || (rangeMissing ? "（元の参照行範囲が存在しないため、該当コードを取得できません）" : "（空のファイル）"), fence, "",
       "該当箇所と周辺の設計意図を確認し、参照先を示しながら日本語で回答してください。",
@@ -605,6 +683,11 @@
     $("toggle-tree").setAttribute("aria-expanded", String(open));
     if (open) $("file-search").focus();
   });
+  $("close-tree").addEventListener("click", () => {
+    $("file-sidebar").classList.remove("is-open");
+    $("toggle-tree").setAttribute("aria-expanded", "false");
+    $("toggle-tree").focus();
+  });
   $("sync-toggle").addEventListener("click", () => {
     state.sync = !state.sync;
     $("sync-toggle").setAttribute("aria-pressed", String(state.sync));
@@ -617,6 +700,13 @@
     $(id).addEventListener("touchstart", () => { state.source = null; }, { passive: true });
   }
   $("ask-file").addEventListener("click", () => openQuestion({ side: inventoryMap.get(state.file.path)?.status === "deleted" ? "old" : "new", start: null, end: null }));
+  $("close-diagram").addEventListener("click", () => $("diagram-dialog").close());
+  $("diagram-dialog").addEventListener("click", (event) => {
+    if (event.target === $("diagram-dialog")) {
+      const rect = event.target.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.target.close();
+    }
+  });
   $("close-question").addEventListener("click", () => $("question-dialog").close());
   $("question-dialog").addEventListener("click", (event) => {
     if (event.target === $("question-dialog")) {
@@ -646,7 +736,7 @@
     navigate(path, Number(match[3]), match[2].toUpperCase() === "O" ? "old" : "new", Number(match[4] || match[3]));
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) && !$("question-dialog").open) {
+    if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) && !$("question-dialog").open && !$("diagram-dialog").open) {
       event.preventDefault();
       if (window.matchMedia("(max-width: 950px)").matches) { $("file-sidebar").classList.add("is-open"); $("toggle-tree").setAttribute("aria-expanded", "true"); }
       $("file-search").focus();
