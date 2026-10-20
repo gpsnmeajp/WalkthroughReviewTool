@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ウォークスルーレビュー</title>
+  <link rel="stylesheet" href="assets/vendor/prism.css">
+  <link rel="stylesheet" href="assets/style.css">
+  <script defer src="assets/vendor/marked.js"></script>
+  <script defer src="assets/vendor/prism.js" data-manual></script>
+  <script defer src="assets/app.js"></script>
+</head>
+<body>
+  <a id="skip-link" class="skip-link" href="#main-panel">メインコンテンツへ</a>
+  <header class="app-header">
+    <button id="toggle-tree" class="icon-button mobile-tree-toggle" type="button" aria-label="ファイル一覧を開閉" aria-expanded="false" aria-controls="file-sidebar">☰</button>
+    <a class="brand" href="#" aria-label="プロジェクト概要へ">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>Walkthrough<span class="brand-sub">REVIEW</span></span>
+    </a>
+    <span class="header-divider" aria-hidden="true"></span>
+    <span id="review-title" class="review-title">ウォークスルーレビュー</span>
+    <span id="mode-badge" class="mode-badge">全体レビュー</span>
+    <span class="offline-badge"><span aria-hidden="true"></span>オフライン</span>
+  </header>
+
+  <section id="hash-alert" class="hash-alert" role="status" hidden>
+    <details>
+      <summary><strong id="hash-alert-title">解説とコードの照合を確認してください</strong><span id="hash-alert-summary"></span></summary>
+      <p>解説と表示中コードの対応に確認事項があります。行の参照先と説明の内容を確認してください。</p>
+      <ul id="hash-warning-list"></ul>
+      <p id="unattached-warning" hidden>対象外になったファイルの解説は <a href="self-review.md" target="_blank" rel="noopener">self-review.md</a> に保存されています。</p>
+    </details>
+  </section>
+
+  <div class="workspace">
+    <aside id="file-sidebar" class="file-sidebar" aria-label="プロジェクト内のファイル">
+      <div class="sidebar-top">
+        <div class="eyebrow">EXPLORER</div>
+        <button id="home-button" class="home-button" type="button"><span aria-hidden="true">⌂</span> プロジェクト概要 <span aria-hidden="true">↗</span></button>
+        <label class="search-field"><span aria-hidden="true">⌕</span><input id="file-search" type="search" placeholder="ファイルを検索" aria-label="ファイルを検索"><kbd>/</kbd></label>
+        <div class="tree-filters" role="group" aria-label="表示するファイル">
+          <button type="button" data-filter="all" aria-pressed="true">すべて</button>
+          <button type="button" data-filter="selected" aria-pressed="false">対象</button>
+          <button type="button" data-filter="excluded" aria-pressed="false">対象外</button>
+        </div>
+      </div>
+      <div class="project-root"><span aria-hidden="true">▾</span> <strong id="project-name">PROJECT</strong><span id="inventory-count"></span></div>
+      <nav id="file-tree" class="file-tree" aria-label="ファイル一覧"></nav>
+      <div class="sidebar-footer"><span class="legend-dot" aria-hidden="true"></span> レビュー対象 <span class="legend-dot excluded" aria-hidden="true"></span> 対象外</div>
+    </aside>
+
+    <main id="main-panel" class="main-panel" tabindex="-1">
+      <div class="panel-toolbar">
+        <div class="toolbar-heading"><span id="main-kicker" class="eyebrow">PROJECT OVERVIEW</span><h1 id="main-title">プロジェクト概要</h1></div>
+        <span id="file-meta" class="file-meta"></span>
+      </div>
+      <section id="overview-view" class="overview-view">
+        <div class="overview-intro"><span class="section-number">01 / OVERVIEW</span><h2>全体をつかんで、<br>コードを読み進める。</h2><p>ファイルを選ぶと、コード全文と行に対応した解説を並べて確認できます。</p></div>
+        <div id="project-stats" class="project-stats"></div>
+        <div class="section-heading"><h3>プロジェクトの解説</h3><span>AI WALKTHROUGH</span></div>
+        <article id="overview-content" class="markdown overview-content"></article>
+        <details id="warnings-panel" class="warnings-panel" hidden><summary id="warnings-title">確認事項</summary><ul id="warnings-list"></ul></details>
+        <div class="review-help"><strong>読み進め方</strong><p>左の一覧から対象ファイルを選び、右の解説と一緒にコードを確認します。行や解説の「質問」から、参照付きの質問文を作れます。</p></div>
+        <footer id="generation-meta" class="generation-meta"></footer>
+      </section>
+
+      <section id="code-view" class="code-view" hidden aria-label="ファイルのコード全文">
+        <div class="code-toolbar">
+          <div class="code-legend"><span id="line-columns">行番号</span><span class="diff-only added-legend"><i></i>追加</span><span class="diff-only removed-legend"><i></i>削除</span></div>
+          <div class="code-actions"><span id="selection-label"></span><button id="ask-file" class="text-button" type="button">このファイルに質問 <span aria-hidden="true">↗</span></button></div>
+        </div>
+        <div id="code-scroll" class="code-scroll" tabindex="0" aria-label="コード全文。縦横にスクロールできます"><div id="code-rows" class="code-rows"></div></div>
+        <div class="code-footer"><span id="code-status"></span><span>読み取り専用 · プロジェクトのスナップショット</span></div>
+      </section>
+      <section id="unavailable-view" class="unavailable-view" hidden><span class="empty-icon" aria-hidden="true">▤</span><h2 id="unavailable-title">レビュー対象外のファイル</h2><p id="unavailable-message"></p><dl id="unavailable-details"></dl><button id="unavailable-home" class="primary-button" type="button">プロジェクト概要へ</button></section>
+    </main>
+
+    <aside id="detail-panel" class="detail-panel" aria-label="解説と対象外ファイル">
+      <div class="panel-toolbar">
+        <div class="toolbar-heading"><span id="detail-kicker" class="eyebrow">REVIEW COVERAGE</span><h2 id="detail-title">対象外のファイル <span id="detail-count" class="count-badge">0</span></h2></div>
+        <button id="sync-toggle" class="sync-toggle" type="button" aria-pressed="true" title="行範囲を基準にコードと解説のスクロールを連動" hidden><span aria-hidden="true">⇅</span> 連動</button>
+      </div>
+      <div id="detail-scroll" class="detail-scroll" tabindex="0">
+        <section id="excluded-view" class="excluded-view"><p class="panel-description">プロジェクト全体の走査結果のうち、AIがレビュー対象に指定しなかったファイルです。</p><ul id="excluded-list" class="excluded-list"></ul></section>
+        <section id="comments-view" class="comments-view" hidden aria-label="コードの解説"></section>
+      </div>
+      <div id="detail-footer" class="detail-footer">全ファイル一覧と対象リストを照合</div>
+    </aside>
+  </div>
+
+  <dialog id="question-dialog" class="question-dialog" aria-labelledby="question-title">
+    <form id="question-form">
+      <div class="dialog-header"><div><span class="eyebrow">ASK YOUR CODING AGENT</span><h2 id="question-title">この箇所について質問</h2></div><button id="close-question" class="icon-button" type="button" aria-label="質問画面を閉じる">×</button></div>
+      <p id="question-reference" class="question-reference"></p>
+      <label class="field-label" for="question-input">確認したいこと</label>
+      <textarea id="question-input" rows="4" required placeholder="例：この処理が必要な理由と、エラー時の動作を教えてください。"></textarea>
+      <p class="field-hint">参照先・該当コード・解説を含む質問文を作成します。</p>
+      <div id="prompt-result" hidden><label class="field-label" for="prompt-output">コーディングエージェントに貼り付ける質問文</label><textarea id="prompt-output" rows="10" readonly spellcheck="false"></textarea><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p></div>
+      <div class="dialog-actions"><button id="copy-prompt" class="secondary-button" type="button" hidden>質問文をコピー</button><button class="primary-button" type="submit">プロンプトを作成 <span aria-hidden="true">↗</span></button></div>
+    </form>
+  </dialog>
+  <div id="live-status" class="sr-only" role="status" aria-live="polite"></div>
+  <script id="review-data" type="application/json">__REVIEW_DATA__</script>
+</body>
+</html>

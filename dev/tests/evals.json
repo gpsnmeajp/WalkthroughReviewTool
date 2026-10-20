@@ -1,0 +1,26 @@
+{
+  "skill_name": "walkthrough-review",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "walkthrough-reviewスキルを実行",
+      "expected_output": "現在のプロジェクトの全体レビューHTMLをAIだけで完成させ、全対象の解説と自己確認結果を提示する。",
+      "files": ["dev/tests/fixtures/project"],
+      "assertions": ["追加の対象・出力先・JSONの入力を要求しない", "全ファイル一覧と対象外一覧を保持する", "非空対象に意味のある解説がある", "全コメントのhashとrangeが有効", "元プロジェクトを変更しない"]
+    },
+    {
+      "id": 2,
+      "prompt": "walkthrough-reviewスキルを実行。添付のdiff.patchで今回の変更と削除した処理をレビューしてください。",
+      "expected_output": "差分モードの全文レビュー。削除ファイルを旧行番号で説明し、関連する未変更ファイルも理解できる資料。",
+      "files": ["dev/tests/fixtures/project", "dev/tests/fixtures/diff.patch"],
+      "assertions": ["全ファイルを走査する", "削除されたlegacy.pyを復元する", "旧行をold側のhashで説明する", "解説・リンク・Hashを確認して渡す"]
+    },
+    {
+      "id": 3,
+      "prompt": "walkthrough-reviewスキルを実行。Gitの今回の差分を見たい。",
+      "expected_output": "パッチをAIがGitから作成し、HEADから現在の作業コピーまでを説明する。未追跡ファイルの扱いを明示する。",
+      "files": [],
+      "assertions": ["人間にパッチ作成を依頼しない", "比較元とステージ済み・未ステージの範囲を明示する", "Gitのindexや作業コードを変更しない", "未追跡ファイルを黙って無視しない"]
+    }
+  ]
+}

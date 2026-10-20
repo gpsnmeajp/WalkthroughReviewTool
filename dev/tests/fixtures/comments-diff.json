@@ -1,0 +1,45 @@
+{
+  "overview": "# 割引計算と旧実装の削除\n\n[現在の入口](review:src/main.py#L4)が、[価格の検証を行う合計処理](review:src/pricing.py#L1)を呼び出し、割引を適用します。\n\n差分では[旧合計処理](review:legacy.py#O1)も全文表示します。旧実装には負の価格の検証がなく、この例では現在の合計処理に役割を集約しています。`config.json` と `notes.txt` は対象外として残ります。",
+  "comments": [
+    {
+      "id": "discount",
+      "file": "src/main.py",
+      "start_line": 4,
+      "end_line": 9,
+      "side": "new",
+      "title": "割引を検証して0以上の請求額を返す",
+      "body": "割引を省略した場合は従来と同じ合計を返します。負の割引を拒否し、合計より大きな割引では請求額を0にします。商品価格の負数チェックは[合計処理](review:src/pricing.py#L3)に任せます。",
+      "code_hash": "2025a627017fdf2982cc2b77d5372e3e90a3945962e6e74c36e0240f3001a793"
+    },
+    {
+      "id": "entry-example",
+      "file": "src/main.py",
+      "start_line": 12,
+      "end_line": 13,
+      "side": "new",
+      "title": "通常経路を示す実行例",
+      "body": "直接実行すると `(120 + 80) - 30` の結果 `170` を表示します。割引の境界値は別途確認する必要があります。",
+      "code_hash": "2025a627017fdf2982cc2b77d5372e3e90a3945962e6e74c36e0240f3001a793"
+    },
+    {
+      "id": "pricing",
+      "file": "src/pricing.py",
+      "start_line": 1,
+      "end_line": 5,
+      "side": "new",
+      "title": "変更のない依存先も全文で確認する",
+      "body": "この関数は今回のパッチでは変更していません。価格リストの負数検証と合計を担当します。変更箇所だけでなく、呼び出し先の契約も確認できるよう対象に含めています。",
+      "code_hash": "611ccf0aa6be92fcb87f775c21d64cd50466f8ac330b894dcd45f91285e03f18"
+    },
+    {
+      "id": "legacy-removed",
+      "file": "legacy.py",
+      "start_line": 1,
+      "end_line": 3,
+      "side": "old",
+      "title": "削除された合計処理の役割を確認する",
+      "body": "旧処理は単に合計を返していました。現在の入口は[検証付きの合計](review:src/pricing.py#L1)を使用します。表示している本文は削除パッチから復元した旧ファイルの全文です。削除の妥当性を判断する際は、他に旧処理の利用者が残っていないことも確認します。",
+      "code_hash": "d682f2f31d473b824a7a33c9b63d47750a392455e82c116b258f3142bd9fa5ec"
+    }
+  ]
+}

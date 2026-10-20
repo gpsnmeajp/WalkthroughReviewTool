@@ -1,0 +1,45 @@
+{
+  "overview": "# 割引計算のウォークスルー\n\n`checkout` を入口に、商品価格の合計を `pricing.py` に任せ、割引を適用して請求額を返す小さなサンプルです。\n\n## 読み進め方\n\n1. [割引の検証と適用](review:src/main.py#L4)で請求額の条件を確認します。\n2. [価格の合計](review:src/pricing.py#L1)で責務の分担を確認します。このファイルは差分モードでも未変更の全文を表示します。\n\n`config.json` と `notes.txt` は対象外です。差分モードでは旧実装 `legacy.py` の削除もパッチに含まれます。対象外は確認済みという意味ではなく、この資料の解説範囲から外れていることを表します。",
+  "comments": [
+    {
+      "id": "discount-validation",
+      "file": "src/main.py",
+      "start_line": 4,
+      "end_line": 7,
+      "side": "new",
+      "title": "割引の入力条件を入口で確認する",
+      "body": "割引を省略した呼び出しでは `0` を使うため、従来の合計計算と同じ結果になります。負の割引を許すと請求額が増えるため、ここでは `ValueError` で拒否します。商品価格の負数チェックは[合計処理](review:src/pricing.py#L3)が担当します。",
+      "code_hash": "2025a627017fdf2982cc2b77d5372e3e90a3945962e6e74c36e0240f3001a793"
+    },
+    {
+      "id": "discount-floor",
+      "file": "src/main.py",
+      "start_line": 8,
+      "end_line": 9,
+      "side": "new",
+      "title": "請求額を0以上に保つ",
+      "body": "合計を求めてから固定額の割引を適用します。割引が合計を超えても `max(0, ...)` により請求額は0になります。超過分の返金や次回への繰り越しは、この実装では扱いません。この下限の扱いが期待する仕様かをレビューしてください。",
+      "code_hash": "2025a627017fdf2982cc2b77d5372e3e90a3945962e6e74c36e0240f3001a793"
+    },
+    {
+      "id": "entry-example",
+      "file": "src/main.py",
+      "start_line": 12,
+      "end_line": 13,
+      "side": "new",
+      "title": "実行例で処理の入口を示す",
+      "body": "スクリプトとして直接実行した場合だけ、120と80の合計から30を引いた `170` を出力します。この例は通常経路を示し、入力の境界条件を網羅するものではありません。",
+      "code_hash": "2025a627017fdf2982cc2b77d5372e3e90a3945962e6e74c36e0240f3001a793"
+    },
+    {
+      "id": "pricing-validation",
+      "file": "src/pricing.py",
+      "start_line": 1,
+      "end_line": 5,
+      "side": "new",
+      "title": "価格の検証と合計を一か所に置く",
+      "body": "価格リストに負数があれば、合計を返す前に失敗させます。合計処理は割引を知らず、[呼び出し側](review:src/main.py#L8)が最終請求額を決めます。このサンプルは価格のリストを入力とし、通貨変換や小数の丸め規則は実装していません。",
+      "code_hash": "611ccf0aa6be92fcb87f775c21d64cd50466f8ac330b894dcd45f91285e03f18"
+    }
+  ]
+}

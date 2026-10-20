@@ -1,0 +1,8 @@
+{
+  "title": "割引計算と旧実装の削除",
+  "files": [
+    "src/main.py",
+    "src/pricing.py",
+    "legacy.py"
+  ]
+}

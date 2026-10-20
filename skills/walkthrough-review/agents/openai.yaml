@@ -1,0 +1,4 @@
+interface:
+  display_name: "Walkthrough Review"
+  short_description: "対象選定から解説と自己確認まで行い、コード全文付きHTMLレビュー資料を作成"
+  default_prompt: "$walkthrough-review を実行して、現在のプロジェクトのレビュー資料を完成させてください。"

@@ -1,0 +1,7 @@
+{
+  "title": "割引計算のウォークスルー",
+  "files": [
+    "src/main.py",
+    "src/pricing.py"
+  ]
+}
