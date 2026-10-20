@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<defs>
+  <linearGradient id="base" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F7F8F4"/><stop offset="1" stop-color="#F2F6ED"/></linearGradient>
+  <linearGradient id="aura" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#DBF1DB"/><stop offset="1" stop-color="#E8F3EC"/></linearGradient>
+  <filter id="shadow" x="-30%" y="-30%" width="170%" height="190%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#274946" flood-opacity=".17"/></filter>
+  <filter id="softshadow" x="-30%" y="-30%" width="180%" height="180%"><feDropShadow dx="0" dy="9" stdDeviation="14" flood-color="#274946" flood-opacity=".13"/></filter>
+  <clipPath id="windowClip"><rect x="634" y="103" width="580" height="440" rx="18"/></clipPath>
+  <pattern id="dotpat" x="0" y="0" width="17" height="17" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.2" fill="#6FAF94" opacity=".25"/></pattern>
+</defs>
+<rect x="0" y="0" width="1280" height="640" rx="0" fill="url(#base)" stroke="none" stroke-width="1" />
+<rect x="0" y="0" width="1280" height="8" rx="0" fill="#173336" stroke="none" stroke-width="1" />
+<circle cx="1031" cy="301" r="348" fill="url(#aura)" opacity=".82"/>
+<circle cx="1126" cy="351" r="266" fill="none" stroke="#BDD7C7" stroke-width="1.2" opacity=".72"/>
+<circle cx="1126" cy="351" r="208" fill="none" stroke="#BDD7C7" stroke-width="1.2" opacity=".65"/>
+<rect x="1095" y="42" width="164" height="104" rx="0" fill="url(#dotpat)" stroke="none" stroke-width="1" />
+<rect x="598" y="500" width="130" height="115" rx="0" fill="url(#dotpat)" stroke="none" stroke-width="1" />
+<g transform="translate(80,76) scale(0.7291666666666666)">
+    <rect width="96" height="96" rx="23" fill="#173336"/>
+    <path d="M33 27 L17 48 L33 69" fill="none" stroke="#F7FAF6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M63 27 L79 48 L63 69" fill="none" stroke="#74CC9D" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M51 25 L43 71" stroke="#F7FAF6" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="78" cy="79" r="8.5" fill="#E8816E" stroke="#173336" stroke-width="4"/>
+    </g>
+<text x="165" y="104" font-family="Inter Display" font-size="12" font-weight="700" fill="#617674" letter-spacing="2.0" >OPEN SOURCE · AI SKILL</text>
+<text x="165" y="129" font-family="Inter Display" font-size="12" font-weight="700" fill="#3B9876" letter-spacing="2.0" >CODE UNDERSTANDING</text>
+<line x1="80" y1="179" x2="540" y2="179" stroke="#D5DED6" stroke-width="1.5" />
+<text x="75" y="264" font-family="Inter Display" font-size="65" font-weight="750" fill="#173336" letter-spacing="-2.8" >Walkthrough</text>
+<text x="78" y="338" font-family="Inter Display" font-size="65" font-weight="750" fill="#173336" letter-spacing="-2.8" >ReviewTool</text>
+<rect x="81" y="365" width="54" height="5" rx="2.5" fill="#3B9876" stroke="none" stroke-width="1" />
+<text x="80" y="418" font-family="Noto Sans CJK JP" font-size="25" font-weight="650" fill="#173336" letter-spacing="0.2" >コード全文と設計解説を、</text>
+<text x="80" y="455" font-family="Noto Sans CJK JP" font-size="25" font-weight="650" fill="#173336" letter-spacing="0.2" >並べて、じっくり読む。</text>
+<text x="81" y="496" font-family="Noto Sans CJK JP" font-size="15" font-weight="400" fill="#617674"  >AIによるウォークスルー形式のコードレビュー</text>
+<line x1="80" y1="533" x2="539" y2="533" stroke="#D7E1D9" stroke-width="1.4" />
+<circle cx="87" cy="568" r="4.7" fill="#3B9876"/>
+<text x="101" y="573" font-family="Inter Display" font-size="12" font-weight="720" fill="#173336" letter-spacing="0.65" >FULL SOURCE</text>
+<circle cx="242" cy="568" r="4.7" fill="#3B9876"/>
+<text x="256" y="573" font-family="Inter Display" font-size="12" font-weight="720" fill="#173336" letter-spacing="0.65" >DIFF VIEW</text>
+<circle cx="363" cy="568" r="4.7" fill="#3B9876"/>
+<text x="377" y="573" font-family="Inter Display" font-size="12" font-weight="720" fill="#173336" letter-spacing="0.65" >EXPLANATIONS</text>
+<text x="80" y="612" font-family="Inter Display" font-size="12" font-weight="500" fill="#617674" letter-spacing="0.1" >github.com/gpsnmeajp/WalkthroughReviewTool</text>
+<rect x="634" y="103" width="580" height="440" rx="18" fill="#FFFFFF" stroke="#BACDC3" stroke-width="1.25" filter="url(#shadow)"/>
+<g clip-path="url(#windowClip)">
+<rect x="634" y="103" width="580" height="50" rx="0" fill="#F9FBF8" stroke="none" stroke-width="1" />
+<line x1="634" y1="153" x2="1214" y2="153" stroke="#D7E1DC" stroke-width="1" />
+<circle cx="657" cy="127" r="5.5" fill="#EFB3A6"/>
+<circle cx="674" cy="127" r="5.5" fill="#F4CF91"/>
+<circle cx="691" cy="127" r="5.5" fill="#A8D8B8"/>
+<text x="732" y="132" font-family="DejaVu Sans Mono" font-size="13" font-weight="600" fill="#4D6765"  >walkthrough-review / src/ui/app.js</text>
+<rect x="1102" y="116" width="95" height="24" rx="7" fill="#EAF5E9" stroke="none" stroke-width="1" />
+<text x="1118" y="132" font-family="DejaVu Sans Mono" font-size="11" font-weight="700" fill="#3B9876"  >DIFF  +31</text>
+<rect x="635" y="154" width="126" height="347" rx="0" fill="#F0F3EF" stroke="none" stroke-width="1" />
+<rect x="761" y="154" width="281" height="347" rx="0" fill="#FFFFFF" stroke="none" stroke-width="1" />
+<rect x="1042" y="154" width="171" height="347" rx="0" fill="#FAFBF8" stroke="none" stroke-width="1" />
+<line x1="761" y1="154" x2="761" y2="501" stroke="#DBE5DF" stroke-width="1" />
+<line x1="1042" y1="154" x2="1042" y2="501" stroke="#DBE5DF" stroke-width="1" />
+<text x="652" y="177" font-family="Inter Display" font-size="10" font-weight="750" fill="#80948C" letter-spacing="1.0" >PROJECT</text>
+<text x="781" y="177" font-family="Inter Display" font-size="10" font-weight="750" fill="#80948C" letter-spacing="1.0" >SOURCE CODE</text>
+<text x="1060" y="177" font-family="Inter Display" font-size="10" font-weight="750" fill="#80948C" letter-spacing="0.8" >WALKTHROUGH</text>
+<line x1="634" y1="188" x2="1214" y2="188" stroke="#E3EAE6" stroke-width="0.9" />
+<rect x="653" y="201" width="12" height="10" rx="2" fill="#CBD7D0" stroke="none" stroke-width="1" />
+<rect x="653" y="228" width="12" height="10" rx="2" fill="#CBD7D0" stroke="none" stroke-width="1" />
+<rect x="653" y="256" width="12" height="10" rx="2" fill="#CBD7D0" stroke="none" stroke-width="1" />
+<rect x="653" y="284" width="12" height="10" rx="2" fill="#CBD7D0" stroke="none" stroke-width="1" />
+<rect x="653" y="312" width="12" height="10" rx="2" fill="#CBD7D0" stroke="none" stroke-width="1" />
+<rect x="653" y="340" width="12" height="10" rx="2" fill="#CBD7D0" stroke="none" stroke-width="1" />
+<text x="673" y="210" font-family="DejaVu Sans Mono" font-size="12" font-weight="600" fill="#173336"  >src</text>
+<text x="673" y="237" font-family="DejaVu Sans Mono" font-size="12" font-weight="400" fill="#6E837C"  >assets</text>
+<rect x="643" y="253" width="111" height="29" rx="5" fill="#DDEDE1" stroke="none" stroke-width="1" />
+<rect x="643" y="253" width="3" height="29" rx="1" fill="#3B9876" stroke="none" stroke-width="1" />
+<text x="673" y="272" font-family="DejaVu Sans Mono" font-size="12" font-weight="700" fill="#173336"  >app.js</text>
+<text x="673" y="299" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#6E837C"  >index.html</text>
+<text x="673" y="327" font-family="DejaVu Sans Mono" font-size="11" font-weight="400" fill="#6E837C"  >docs</text>
+<text x="673" y="355" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#6E837C"  >README.md</text>
+<text x="653" y="474" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#81938F"  >6 files</text>
+<rect x="762" y="228" width="280" height="33" rx="0" fill="#FBEFEB" stroke="none" stroke-width="1" />
+<rect x="762" y="261" width="280" height="121" rx="0" fill="#EBF7ED" stroke="none" stroke-width="1" />
+<rect x="762" y="228" width="4" height="33" rx="0" fill="#D9907D" stroke="none" stroke-width="1" />
+<rect x="762" y="261" width="4" height="121" rx="0" fill="#3B9876" stroke="none" stroke-width="1" />
+<text x="772" y="213" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >356</text>
+<text x="772" y="247" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >356</text>
+<text x="772" y="280" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >362</text>
+<text x="772" y="313" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >363</text>
+<text x="772" y="346" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >364</text>
+<text x="772" y="379" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >365</text>
+<text x="772" y="411" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >370</text>
+<text x="772" y="443" font-family="DejaVu Sans Mono" font-size="10" font-weight="400" fill="#91A19B"  >371</text>
+<text x="802" y="211" font-family="DejaVu Sans Mono" font-size="11" font-weight="500" fill="#4D687D"  >const card = node(</text>
+<text x="802" y="225" font-family="DejaVu Sans Mono" font-size="11" font-weight="500" fill="#698A57"  >  &quot;article&quot;);</text>
+<text x="803" y="249" font-family="DejaVu Sans Mono" font-size="11" font-weight="500" fill="#BB6E61"  >- link.on(&quot;click&quot;,</text>
+<text x="805" y="283" font-family="DejaVu Sans Mono" font-size="11" font-weight="600" fill="#397A65"  >+ const jumpToCode</text>
+<text x="817" y="299" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#56728B"  >= () =&gt; navigate();</text>
+<text x="805" y="316" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#397A65"  >+ link.addEventListener</text>
+<text x="817" y="333" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#587B8F"  >(&quot;click&quot;, jumpToCode);</text>
+<text x="805" y="349" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#397A65"  >+ if (!invalidRange) {</text>
+<text x="818" y="365" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#6B7F85"  >card.onclick = ...</text>
+<text x="802" y="415" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#4F7484"  >const selection =</text>
+<text x="815" y="430" font-family="DejaVu Sans Mono" font-size="10" font-weight="500" fill="#4F7484"  >window.getSelection();</text>
+<text x="802" y="457" font-family="DejaVu Sans Mono" font-size="11" font-weight="700" fill="#3B9876"  >jumpToCode();</text>
+<rect x="1054" y="199" width="146" height="267" rx="11" fill="#FFFFFF" stroke="#C9DDCF" stroke-width="1.15" />
+<rect x="1065" y="211" width="84" height="20" rx="5" fill="#EDF5E8" stroke="none" stroke-width="1" />
+<text x="1075" y="225" font-family="DejaVu Sans Mono" font-size="10" font-weight="700" fill="#3B9876"  >09 / NOTE</text>
+<text x="1066" y="257" font-family="Noto Sans CJK JP" font-size="16" font-weight="750" fill="#173336"  >カードから</text>
+<text x="1066" y="280" font-family="Noto Sans CJK JP" font-size="16" font-weight="750" fill="#173336"  >コードへ移動</text>
+<line x1="1066" y1="295" x2="1188" y2="295" stroke="#E1E9E4" stroke-width="1" />
+<text x="1066" y="317" font-family="Noto Sans CJK JP" font-size="12" font-weight="400" fill="#586D69"  >解説と実装を</text>
+<text x="1066" y="335" font-family="Noto Sans CJK JP" font-size="12" font-weight="400" fill="#586D69"  >行番号でリンク</text>
+<rect x="1068" y="354" width="48" height="27" rx="6" fill="#EAF5E9" stroke="#A4CDB5" stroke-width="1" />
+<text x="1077" y="372" font-family="DejaVu Sans Mono" font-size="9" font-weight="750" fill="#3B9876"  >CODE</text>
+<path d="M1119 368 H1142" fill="none" stroke="#789D8E" stroke-width="1.8" stroke-linecap="round"/>
+<path d="M1138 364 L1144 368 L1138 372" fill="none" stroke="#789D8E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1147" y="354" width="39" height="27" rx="6" fill="#F7E9E2" stroke="#E7C1B3" stroke-width="1" />
+<text x="1153" y="372" font-family="DejaVu Sans Mono" font-size="9" font-weight="750" fill="#BB6F5B"  >WHY</text>
+<rect x="1068" y="401" width="118" height="44" rx="6" fill="#F4F8F2" stroke="none" stroke-width="1" />
+<text x="1081" y="419" font-family="DejaVu Sans Mono" font-size="9" font-weight="700" fill="#3B9876"  >?  ASK THE AGENT</text>
+<text x="1081" y="434" font-family="Noto Sans CJK JP" font-size="11" font-weight="550" fill="#173336"  >質問をコピー</text>
+<rect x="634" y="501" width="580" height="42" rx="0" fill="#F8FBF8" stroke="none" stroke-width="1" />
+<line x1="634" y1="501" x2="1214" y2="501" stroke="#E0E8E2" stroke-width="1" />
+<circle cx="659" cy="521" r="4" fill="#3B9876"/>
+<text x="671" y="526" font-family="Inter Display" font-size="10" font-weight="700" fill="#6F8780" letter-spacing="0.6" >LINKED EXPLANATIONS</text>
+<text x="1080" y="526" font-family="Inter Display" font-size="10" font-weight="700" fill="#6F8780" letter-spacing="0.2" >READ ONLY · HTML</text>
+</g>
+<path d="M1027 298 H1036 L1047 288" fill="none" stroke="#3B9876" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1027" cy="298" r="4" fill="#FFFFFF" stroke="#3B9876" stroke-width="2"/>
+<rect x="846" y="558" width="332" height="43" rx="12" fill="#173336" stroke="none" stroke-width="1" filter="url(#softshadow)"/>
+<circle cx="870" cy="579" r="5.5" fill="#74CC9D"/>
+<text x="885" y="585" font-family="Inter Display" font-size="12" font-weight="700" fill="#FAFBF7" letter-spacing="0.8" >READ THE CODE. UNDERSTAND THE WHY.</text>
+</svg>
