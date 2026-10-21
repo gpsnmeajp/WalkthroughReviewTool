@@ -252,6 +252,13 @@ class PackageSkillTests(unittest.TestCase):
         standalone = extracted / package.SKILL_NAME
         cli = standalone / "scripts/walkthrough.py"
         self.run_python(cli, "--help")
+        # 描画ツールも展開先だけで起動できる。実ブラウザーでの描画は別途確認する。
+        self.run_python(standalone / "scripts/render_svg.py", "--help")
+        empty = self.workspace / "empty-comments.json"
+        empty.write_text('{"comments": []}', encoding="utf-8")
+        rendered = self.run_python(standalone / "scripts/render_svg.py", empty,
+                                   "--output", self.workspace / "empty-svg-check")
+        self.assertEqual(json.loads(rendered.stdout)["diagram_count"], 0)
         project = self.workspace / "project"
         project.mkdir()
         (project / "main.py").write_text("value = 2\n", encoding="utf-8")

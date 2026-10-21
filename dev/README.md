@@ -14,7 +14,7 @@
 | `tests/fixtures/` | 全体・差分・削除の検証に使う固定入力 |
 | [tests/evals.json](tests/evals.json) | AIが一言の依頼から完了できるかを確認する評価シナリオ |
 | `tools/` | 配布、導入、素材取得、ブラウザー確認の開発ツール |
-| `walkthrough.py`, `diff_parser.py`, `tools/prepare_review.py`, `tools/comment_cards.py` | スキル内の実装を読み込む開発用の入口 |
+| `walkthrough.py`, `diff_parser.py`, `tools/prepare_review.py`, `tools/comment_cards.py`, `tools/render_svg.py` | スキル内の実装を読み込む開発用の入口 |
 | `package.bat` | Windows向けの配布物生成 |
 | `dist/`, `output/`, `.test-tmp/` | 配布物、表示確認用の生成物、テスト用一時ファイル（Git管理対象外） |
 
@@ -37,9 +37,11 @@ Pythonテストは標準ライブラリだけを使います。UIロジックの
 
 カード単位の作成・修正、Markdown/SVG入力、並行保存、分割読出し、再開・Hash引継ぎ・自己確認記録・一括集約は `tests/test_comment_cards.py` で確認します。展開スキルだけでのカード作成から最終HTMLまでの実行は `tests/test_package_skill.py` に含めます。サブエージェントの推奨と依頼例はスキル内の [担当分担](../skills/walkthrough-review/references/delegation.md) を参照してください。
 
-受入データの全ケースについて、生成結果と `expectations.json` の件数・行数・照合状態・図数が一致することを `tests/test_browser_acceptance.py` で確認します。コード変更のみの段階ではHTMLとスナップショットが変わらず、再ビルド後に不一致・消失範囲・対象外解説が期待値どおりに現れることも検証します。これらは生成データの整合性の検査であり、実ブラウザーでの表示・操作確認は別途必要です。
+受入データの全ケースについて、生成結果と `expectations.json` の件数・行数・照合状態・図数が一致することを `tests/test_browser_acceptance.py` で確認します。コード変更のみの段階ではHTMLとスナップショットが変わらず、再ビルド後に不一致・消失範囲・対象外解説が期待値どおりに現れることも検証します。これらは生成データの整合性の検査です。UIを変更する開発時には、実ブラウザーでの表示・操作確認を別途行います。通常のスキル実行の完了条件には含めません。
 
 SVG図の形式検証・自己確認資料への出力・再ビルドでの保持は `tests/test_diagrams.py` で確認します。差分付加情報と質問文の検証も含め、形式を変更した際はPython・UI両方のテストを実行してください。配布後の図付き解説の動作は展開スキルのテストでも確認します。
+
+SVG描画の入力検証、複数図とカードの対応、画像寸法、描画失敗、既存出力の保護は `tests/test_render_svg.py` で確認します。自動テストはブラウザーの起動境界を模擬するため、描画ツールを変更したら次の手順で実PNGも確認してください。
 
 AIの行動評価は `tests/evals.json` の各依頼を対象プロジェクトで実行し、対象選定から最終確認・提示まで完了するかを確かめます。JSON内の `files` はリポジトリルートからの相対パスです。過去の実行結果を現行版の保証として扱わず、変更した範囲に応じて確認します。
 
@@ -63,7 +65,21 @@ python walkthrough.py merge output/diff --comments tests/fixtures/comments-diff.
 
 生成した `output/full/index.html` または `output/diff/index.html` を開きます。これらは開発用の固定解説を使う動作確認です。実際の依頼では、AIが対象コードを読み、解説を作成して自己確認します。
 
-## ブラウザーでの確認
+## SVGだけの描画確認
+
+```powershell
+python tools/render_svg.py output/full --output output/svg-check-1
+```
+
+図が入ったレビューのフォルダ、`review.json`、export後の `comments.json`、単独の `.svg` を入力できます。ローカルのChrome/Edge/Chromiumを自動検出し、必要なら `--browser` で実行ファイルを指定します。外部PythonパッケージやHTTPサーバーは不要です。
+
+未作成の出力フォルダに、各図の元SVG、拡大幅960pxとカード幅360pxを1枚にしたPNG、カード対応表 `report.json` ができます。**PNGを開いて**日本語・文字切れ・重なり・矢印・縮小時の読みやすさを確認します。図がない場合は図数0の対応表だけを作り、ブラウザーは起動しません。画像出力と目視確認は別で、`rendered` は描画成功のみを表します。
+
+配布ツールを変更した場合は `.skill` を展開し、展開先の `scripts/render_svg.py` から同じSVGを描画できることも確認します。通常のスキル実行での最終版の全図確認・修正方法・確認メモは [SVGの手順](../skills/walkthrough-review/references/svg-diagrams.md#レンダリングして自己確認する) を参照してください。
+
+## 開発時のブラウザー確認
+
+以下はUI変更時の開発検証です。通常のレビュー資料作成では実施せず、SVGのPNG確認だけを行います。
 
 ```powershell
 python tools/prepare_browser_acceptance.py

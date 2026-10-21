@@ -31,6 +31,7 @@ REQUIRED_FILES = (
     "scripts/diff_parser.py",
     "scripts/prepare_review.py",
     "scripts/comment_cards.py",
+    "scripts/render_svg.py",
     "assets/templates/index.html",
     "assets/ui/app.js",
     "assets/ui/highlight-worker.js",
