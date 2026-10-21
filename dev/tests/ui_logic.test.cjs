@@ -20,10 +20,12 @@ function include(start, end) {
 include("  function makeScrollMaps", "  function refreshAnchors");
 include("  function commentHashInfo", "  function renderHashWarnings");
 include("  const rangeLabel", "  const announce");
+include("  function expandRows", "  // 再訪時");
 include("  function buildPrompt", "  async function copyPrompt");
 include("  function activateComment", "  function makeScrollMaps");
 include("  function chooseCommentIndex", "  function openQuestion");
 include("  function isVisibleExcluded", "  function commentHashInfo");
+include("  function visibleRows", "  function createCodeRow");
 
 let cases = 0;
 function test(name, check) {
@@ -97,9 +99,9 @@ const file = {
   path: "src/a%20 file.py",
   sha256: "original-byte-hash",
   code_hashes: { new: "new-code-hash", old: "old-code-hash" },
-  rows: [
-    { old: 3, new: null, kind: "removed", text: "```old```", newline: false },
-    { old: null, new: 3, kind: "added", text: "new_value = 1", newline: true },
+  blocks: [
+    { old_start: 3, new_start: null, kind: "removed", text: "```old```" },
+    { old_start: null, new_start: 3, kind: "added", text: "new_value = 1\n" },
   ],
   comments: [],
 };
@@ -135,7 +137,7 @@ test("消えた参照範囲の質問に無関係なコードを入れない", ()
 });
 
 test("旧行の正規化済み文字列が別途ある場合は旧側の質問で使用する", () => {
-  const specialFile = { ...file, rows: [{ old: 1, new: 2, kind: "context", text: "\ufefftext", old_text: "text", newline: true }] };
+  const specialFile = { ...file, blocks: [{ old_start: 1, new_start: 2, kind: "context", text: "\ufefftext\n", old_text: "text\n" }] };
   const prompt = buildPrompt("旧側を確認", { file: specialFile, side: "old", start: 1, end: 1 });
   assert.ok(prompt.includes("[旧:1 新:2] text"));
   assert.ok(!prompt.includes("\ufefftext"));
@@ -196,7 +198,7 @@ function renderingHarness() {
     requestAnimationFrame: (callback) => callback(),
     refreshAnchors: () => { refreshes++; },
   });
-  include("  function renderDiffSummary", "  function renderCode");
+  include("  function renderDiffSummary", "  function visibleRows");
   include("  function renderDiagram", "  function renderComments");
   return { elements, created, refreshes: () => refreshes };
 }
@@ -397,8 +399,8 @@ function navigationHarness() {
     card: { classList: classes(), getBoundingClientRect: () => ({ top: 80 + index * 220 - detail.scrollTop }) },
   }));
   const state = {
-    file: { path: "file.py", rows }, path: "file.py", commentEntries: entries, activeComment: -1,
-    rowElements: rows.map((_, index) => ({ classList: classes(), getBoundingClientRect: () => ({ top: index * 25 - code.scrollTop }) })),
+    file: { path: "file.py" }, rows, path: "file.py", commentEntries: entries, activeComment: -1,
+    rowHeight: 25, rowElements: new Map(rows.map((_, index) => [index, { classList: classes() }])),
   };
   const elements = { "code-scroll": code, "detail-scroll": detail, "selection-label": {} };
   let hash = "";
@@ -412,6 +414,7 @@ function navigationHarness() {
     $: (id) => elements[id],
     rowIndexFor: (line, side) => rows.findIndex((row) => row[side] === line),
     announce() {},
+    renderCodeWindow() {},
     show() { throw new Error("同じファイルの範囲移動で再描画しない"); },
   });
   return { state, elements, code, detail, location };
@@ -443,16 +446,18 @@ test("重複範囲の後のカードを選んだとき、先に一致するカ�
 
 test("新行のクリックは旧側カードを選択せず、旧行・新行の強調を分離する", () => {
   const harness = navigationHarness();
+  harness.code.scrollLeft = 1200;
   context.focusRange(2, "new", 2, true);
+  assert.equal(harness.code.scrollLeft, 0, "明示的な行移動では行頭も表示する");
   assert.equal(harness.state.activeComment, 1);
-  assert.ok(harness.state.rowElements[2].classList.contains("highlighted"));
-  assert.ok(!harness.state.rowElements[1].classList.contains("active-range"));
+  assert.ok(harness.state.rowElements.get(2).classList.contains("highlighted"));
+  assert.ok(!harness.state.rowElements.get(1).classList.contains("active-range"));
   context.focusRange(1, "old", 3, true, "old-first");
   assert.equal(harness.state.activeComment, 0);
-  assert.ok(harness.state.rowElements[1].classList.contains("highlighted"));
-  assert.ok(harness.state.rowElements[1].classList.contains("active-range"));
-  assert.ok(!harness.state.rowElements[2].classList.contains("highlighted"));
-  assert.ok(!harness.state.rowElements[2].classList.contains("active-range"));
+  assert.ok(harness.state.rowElements.get(1).classList.contains("highlighted"));
+  assert.ok(harness.state.rowElements.get(1).classList.contains("active-range"));
+  assert.ok(!harness.state.rowElements.get(2).classList.contains("highlighted"));
+  assert.ok(!harness.state.rowElements.get(2).classList.contains("active-range"));
 });
 
 test("削除ファイルの質問ボタンは旧版を指定し、質問文に両版Hashを含める", () => {
@@ -464,7 +469,7 @@ test("削除ファイルの質問ボタンは旧版を指定し、質問文に�
   include('  $("ask-file").addEventListener', '  $("close-diagram").addEventListener');
   onClick();
   assert.equal(question.side, "old");
-  const deletedFile = { ...file, rows: [file.rows[0]], code_hashes: { new: "empty-hash", old: "deleted-code-hash" } };
+  const deletedFile = { ...file, blocks: [file.blocks[0]], code_hashes: { new: "empty-hash", old: "deleted-code-hash" } };
   const prompt = buildPrompt("削除理由は？", { ...question, file: deletedFile });
   assert.ok(prompt.includes("表示中の新版Hash: empty-hash"));
   assert.ok(prompt.includes("表示中の旧版Hash: deleted-code-hash"));
@@ -494,7 +499,7 @@ test("警告開閉によるペイン高さ変更もスクロール位置の再�
     observe(element) { observed.push(element); }
   };
   context.requestAnimationFrame = (callback) => callback();
-  context.refreshAnchors = () => { refreshed++; };
+  context.refreshCodeLayout = () => { refreshed++; };
   include("  if (window.ResizeObserver)", "  renderOverview();");
   assert.ok(observed.includes(harness.elements["code-scroll"]));
   assert.ok(observed.includes(harness.elements["detail-scroll"]));
@@ -509,4 +514,238 @@ test("テンプレートにJavaScriptが参照するIDの欠落・重複がな�
   for (const match of source.matchAll(/\$\("([^"]+)"\)/g)) assert.ok(ids.includes(match[1]), `IDがない: ${match[1]}`);
 });
 
-console.log(`${cases} UI logic checks passed`);
+test("ブロック展開は空行・末尾改行なし・旧新のBOM例外を保持し、保存データを変更しない", () => {
+  const file = { blocks: [
+    { kind: "added", old_start: null, new_start: 1, text: "first\n\n" },
+    { kind: "context", old_start: 1, new_start: 3, text: "\ufefflast", old_text: "last" },
+  ] };
+  const before = JSON.stringify(file), rows = context.expandRows(file);
+  assert.equal(rows.length, 3);
+  assert.equal(rows[1].text, "");
+  assert.equal(rows[1].newline, true);
+  assert.equal(rows[2].old, 1);
+  assert.equal(rows[2].new, 3);
+  assert.equal(rows[2].newline, false);
+  assert.equal(rows[2].old_text, "last");
+  assert.equal(JSON.stringify(file), before);
+  assert.equal(context.expandRows({ blocks: [] }).length, 0);
+});
+
+test("分割描画中の行移動は最後の要求だけを完了後へ保留する", () => {
+  const harness = navigationHarness();
+  harness.state.rendering = true;
+  context.focusRange(1, "new", 2, true, "first");
+  context.focusRange(3, "old", 3, true, "latest");
+  assert.equal(JSON.stringify(harness.state.pendingFocus), JSON.stringify([3, "old", 3, true, "latest"]));
+  assert.equal(harness.code.scrollTop, 0);
+});
+
+test("画面外の行にも解説アンカーを作り、DOMの有無に依存せず連動する", () => {
+  const harness = navigationHarness();
+  harness.code.scrollHeight = 1250031; harness.code.clientHeight = 500;
+  harness.detail.scrollHeight = 1200; harness.detail.clientHeight = 500;
+  harness.state.rowElements.clear();
+  harness.state.commentEntries[1].start = 25000;
+  harness.state.commentEntries[2].start = 49999;
+  include("  function refreshAnchors", "  function syncScroll");
+  context.refreshAnchors();
+  assert.equal(harness.state.anchors.length, 3);
+  assert.equal(harness.state.anchors[2].code, 49999 * 25 - 6);
+  assert.equal(harness.state.scrollMaps.detail.at(-1).to, 1249531);
+});
+
+test("Workerは旧新を別々に字句解析し、複数行spanと特殊文字を維持する", () => {
+  let received, defaultListeners = 0;
+  class WorkerGlobalScope {}
+  const self = new WorkerGlobalScope();
+  self.Prism = { disableWorkerMessageHandler: true };
+  self.postMessage = (value) => { received = value; };
+  self.addEventListener = () => { defaultListeners++; };
+  const worker = vm.createContext({ self, WorkerGlobalScope });
+  vm.runInContext(fs.readFileSync(path.join(root, "skills/walkthrough-review/assets/ui/vendor/prism.js"), "utf8"), worker);
+  vm.runInContext(fs.readFileSync(path.join(root, "skills/walkthrough-review/assets/ui/highlight-worker.js"), "utf8"), worker);
+  self.onmessage({ data: { language: "python", sources: { new: 'message = """\n<script>\n"""\n', old: 'removed = 2\n' } } });
+  assert.equal(defaultListeners, 0);
+  assert.ok(received.new[1].includes('class="token triple-quoted-string string"'));
+  assert.ok(received.new[1].includes("&lt;script>"));
+  assert.ok(!received.new[1].includes("<script>"));
+  assert.ok(received.old[0].includes('class="token number">2'));
+  for (const line of [...received.new, ...received.old]) assert.equal((line.match(/<span\b/g) || []).length, (line.match(/<\/span>/g) || []).length);
+  self.onmessage({ data: { language: "unknown", sources: { new: "raw" } } });
+  assert.equal(received, null);
+});
+
+test("構文強調はWorkerで実行し、切替時の取消と再訪時のキャッシュを保つ", () => {
+  const jobs = [], revoked = [], timers = new Map();
+  let paints = 0;
+  class FakeWorker {
+    constructor() { jobs.push(this); }
+    postMessage(value) { this.input = value; }
+    terminate() { this.terminated = true; }
+  }
+  const highlighting = vm.createContext({
+    window: { Worker: FakeWorker }, Worker: FakeWorker, Blob: class {},
+    URL: { createObjectURL: () => `blob:${jobs.length}`, revokeObjectURL: (url) => revoked.push(url) },
+    state: { renderVersion: 1, rowElements: new Map() },
+    $: () => ({ textContent: '"bundled worker source"' }),
+    setTimeout: (fn) => { const id = timers.size + 1; timers.set(id, fn); return id; }, clearTimeout: (id) => timers.delete(id),
+  });
+  vm.runInContext(source.slice(source.indexOf("  const highlightCache"), source.indexOf("  function paintCode")), highlighting);
+  highlighting.paintVisibleCode = () => { paints++; };
+  const input = { path: "diff.py", language: "python", blocks: [
+    { kind: "removed", old_start: 1, new_start: null, text: "old\n" },
+    { kind: "added", old_start: null, new_start: 1, text: "new\n" },
+  ] };
+  highlighting.requestHighlight(input, 1);
+  assert.equal(jobs[0].input.sources.new, "new\n");
+  assert.equal(jobs[0].input.sources.old, "old\n");
+  highlighting.state.renderVersion = 2;
+  highlighting.cancelHighlight();
+  jobs[0].onmessage({ data: { new: ["stale"] } });
+  assert.equal(paints, 0);
+  assert.ok(jobs[0].terminated && revoked.length === 1 && timers.size === 0);
+  highlighting.requestHighlight(input, 2);
+  const result = { new: ["colored new"], old: ["colored old"] };
+  jobs[1].onmessage({ data: result });
+  assert.equal(paints, 1);
+  highlighting.state.highlighted = null;
+  highlighting.requestHighlight(input, 2);
+  assert.strictEqual(highlighting.state.highlighted, result);
+  assert.equal(jobs.length, 2, "再訪では字句解析を起動しない");
+  highlighting.requestHighlight({ ...input, path: "fallback.py" }, 2);
+  jobs[2].onerror();
+  assert.equal(highlighting.state.highlightJob, null);
+  assert.ok(jobs[2].terminated);
+});
+
+async function checkVirtualRendering() {
+  const timers = [], focused = [], created = [];
+  let rowHeight = 25;
+  const elements = {};
+  function makeNode(tag, className, text) {
+    const element = {
+      tagName: tag, className: className || "", textContent: text, children: [], dataset: {}, attributes: {}, style: {}, events: {},
+      scrollTop: 0, scrollWidth: 400, clientHeight: 500,
+      append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } },
+      replaceChildren(...children) { this.children = []; this.append(...children); },
+      insertBefore(child, next) { child.parentElement = this; this.children.splice(this.children.indexOf(next), 0, child); },
+      remove() { const list = this.parentElement.children; list.splice(list.indexOf(this), 1); },
+      contains(child) { return child === this || this.children.some((item) => item.contains(child)); },
+      querySelector(selector) { return this.children.find((item) => item.className === selector.slice(1)); },
+      setAttribute(name, value) { this.attributes[name] = value; },
+      addEventListener(name, callback) { this.events[name] = callback; },
+      focus() {},
+    };
+    element.classList = {
+      toggle(name, active) { const classes = new Set(element.className.split(" ")); if (active) classes.add(name); else classes.delete(name); element.className = [...classes].join(" "); },
+      contains(name) { return element.className.split(" ").includes(name); },
+    };
+    created.push(element);
+    return element;
+  }
+  const rendering = vm.createContext({
+    node: makeNode, $: (id) => elements[id] ||= makeNode("div"), window: {},
+    data: { mode: "diff" }, state: { renderVersion: 1, rows: [], pendingFocus: null, commentEntries: [], activeComment: -1 },
+    performance: { now: () => 0 },
+    setTimeout: (callback) => timers.push(callback),
+    document: { querySelectorAll: () => [], activeElement: null },
+    getComputedStyle: () => ({ getPropertyValue: () => String(rowHeight) }),
+    escapeHTML: (value) => value, renderDiffSummary() {}, refreshAnchors() {},
+    focusRange: (...args) => focused.push(args),
+  });
+  vm.runInContext(source.slice(source.indexOf("  function expandRows"), source.indexOf("  function rowIndexFor")), rendering);
+  vm.runInContext(source.slice(source.indexOf("  function visibleRows"), source.indexOf("  function renderDiagram")), rendering);
+  const large = { path: "large.py", language: "plain", blocks: [{ kind: "context", old_start: 1, new_start: 1, text: "line\n".repeat(50000) }] };
+  const before = JSON.stringify(large);
+  rendering.state.file = large;
+  rendering.state.rows = rendering.expandRows(large);
+  rendering.state.pendingFocus = [50000, "new", 50000, true, "last"];
+  const pending = rendering.renderCode(large);
+  assert.equal(rendering.state.rowElements.size, 0);
+  timers.shift()(); await Promise.resolve();
+  assert.equal(await pending, true);
+  assert.ok(rendering.state.rowElements.size <= 61);
+  assert.equal(elements["code-scroll"].attributes["aria-busy"], "false");
+  assert.equal(focused[0][0], 50000);
+  assert.equal(rendering.state.bottomSpacer.style.height, `${(50000 - rendering.state.windowEnd) * 25}px`);
+  assert.equal(JSON.stringify(large), before);
+  elements["code-scroll"].scrollTop = 25000 * 25;
+  rendering.renderCodeWindow();
+  assert.ok(rendering.state.rowElements.size <= 61);
+  assert.ok(rendering.state.rowElements.has(25000));
+  assert.ok(!rendering.state.rowElements.has(0));
+  assert.ok(created.every((item) => Object.keys(item.events).length === 0), "行ごとのハンドラを作らない");
+  rendering.state.selection = { side: "new", start: 24995, end: 50000 };
+  rendering.updateRowClasses();
+  assert.ok(rendering.state.rowElements.get(25000).classList.contains("highlighted"));
+  const retained = rendering.state.rowElements.get(25000);
+  elements["code-scroll"].scrollTop += 25;
+  rendering.renderCodeWindow();
+  assert.strictEqual(rendering.state.rowElements.get(25000), retained, "共通する行のDOMを再利用する");
+  elements["code-scroll"].scrollTop = 50000 * 25 - 500;
+  rendering.renderCodeWindow();
+  assert.ok(rendering.state.rowElements.has(49999));
+  assert.equal(rendering.state.bottomSpacer.style.height, "0px");
+  assert.equal(rendering.state.rowElements.get(49999).children[1].dataset.line, 50000);
+  assert.ok(rendering.state.rowElements.get(49999).classList.contains("highlighted"));
+  cases++; console.log("OK 五万行でも表示範囲の61行以下だけを保持し、末尾・範囲強調・共通DOMを維持する");
+
+  let question, jump;
+  rendering.openQuestion = (value) => { question = value; };
+  rendering.navigate = (...args) => { jump = args; };
+  vm.runInContext(source.slice(source.indexOf('  $("code-rows").addEventListener'), source.indexOf('  $("detail-scroll").addEventListener')), rendering);
+  const lastRow = rendering.state.rowElements.get(49999);
+  for (const button of [lastRow.children[1], lastRow.children.at(-1)]) {
+    elements["code-rows"].events.click({ target: { closest: () => button } });
+  }
+  assert.deepEqual(jump, ["large.py", 50000, "new"]);
+  assert.equal(question.start, 50000);
+  cases++; console.log("OK 単一のクリックハンドラで行リンクと質問を処理する");
+
+  const firstHighlight = rendering.rememberHighlight(large.path, { new: ["first"] });
+  rendering.requestHighlight(large, 1);
+  assert.strictEqual(rendering.state.highlighted, firstHighlight);
+  rendering.rememberHighlight("second.py", { new: ["second"] });
+  rendering.rememberHighlight("third.py", { new: ["third"] });
+  assert.equal(vm.runInContext("highlightCache.size", rendering), 2);
+  assert.equal(vm.runInContext('highlightCache.has("large.py")', rendering), false);
+  rendering.rememberHighlight("oversized.py", { new: ["x".repeat(8000001)] });
+  assert.equal(vm.runInContext('highlightCache.has("oversized.py")', rendering), false);
+  assert.ok(vm.runInContext("highlightCacheSize <= 8000000", rendering));
+  cases++; console.log("OK ハイライトを再利用し、キャッシュを2ファイル・800万文字以下に制限する");
+
+  const stale = rendering.renderCode(large);
+  rendering.state.renderVersion++;
+  const next = { path: "next.py", language: "plain", blocks: [{ kind: "context", old_start: 1, new_start: 1, text: "new\n" }] };
+  rendering.state.file = next; rendering.state.highlighted = null;
+  rendering.state.rows = rendering.expandRows(next);
+  const current = rendering.renderCode(next);
+  while (timers.length) { timers.shift()(); await Promise.resolve(); }
+  assert.equal(await stale, false);
+  assert.equal(await current, true);
+  assert.equal(rendering.state.rowElements.size, 1);
+  assert.equal(rendering.state.rowElements.get(0).children[3].innerHTML, "new");
+  cases++; console.log("OK ファイル切替後に古い非同期描画を混入させない");
+
+  rendering.state.file = large; rendering.state.rows = rendering.expandRows(large);
+  rendering.state.rows.length = 400;
+  const printable = rendering.renderCode(large);
+  timers.shift()(); await printable;
+  rendering.state.printing = true; rendering.renderCodeWindow(true);
+  assert.equal(rendering.state.rowElements.size, 400);
+  assert.equal(rendering.state.topSpacer.style.height, "0px");
+  assert.equal(rendering.state.bottomSpacer.style.height, "0px");
+  rendering.state.printing = false; rendering.renderCodeWindow(true);
+  assert.ok(rendering.state.rowElements.size <= 61);
+  cases++; console.log("OK 印刷時は全行を展開し、印刷後は表示範囲だけへ戻す");
+
+  elements["code-scroll"].scrollTop = 2506;
+  rowHeight = 27;
+  rendering.refreshCodeLayout();
+  assert.equal(rendering.state.rowHeight, 27);
+  assert.equal(elements["code-scroll"].scrollTop, 2706);
+  assert.equal(rendering.rowTop(100), 2706);
+  assert.ok(rendering.state.rowElements.size <= 60);
+  cases++; console.log("OK 画面幅による行高変更後も閲覧位置と行アンカーを維持する");
+}
+checkVirtualRendering().then(() => console.log(`${cases} UI logic checks passed`)).catch((error) => { console.error(error); process.exitCode = 1; });

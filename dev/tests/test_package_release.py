@@ -230,12 +230,12 @@ class PackageReleaseTests(unittest.TestCase):
             self.assertTrue((output / "self-review.md").is_file())
             if mode == "diff":
                 deleted = next(file for file in data["files"] if file["path"] == "legacy.py")
-                self.assertTrue(any(row["kind"] == "removed" for row in deleted["rows"]))
+                self.assertTrue(any(row["kind"] == "removed" for row in deleted["blocks"]))
         # 開発資料で使うブラウザー確認用ツールも、展開先の入力だけで再実行できる。
         # 素材の生成までを確認し、ブラウザーによる受入確認の代わりにはしない。
         self.run_python(package / "dev/tools/prepare_browser_acceptance.py")
         acceptance = package / "dev/output/browser-acceptance"
-        for name in ("full", "diff", "clipboard-failure", "unmerged", "no-targets", "long", "hash"):
+        for name in ("full", "diff", "clipboard-failure", "unmerged", "no-targets", "long", "large", "hash", "diagrams", "metadata"):
             self.assertTrue((acceptance / name / "index.html").is_file())
         expectations = json.loads((acceptance / "expectations.json").read_text("utf-8"))
         for mode in ("full", "diff"):

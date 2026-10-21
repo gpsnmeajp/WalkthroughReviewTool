@@ -69,6 +69,8 @@ def prepare_review(project=None, work_parent=None):
         "project": project.as_posix(),
         "work": work.as_posix(),
         "cli": (ROOT / "walkthrough.py").as_posix(),
+        "cards_cli": (ROOT / "comment_cards.py").as_posix(),
+        "authoring": (work / "authoring").as_posix(),
         "inventory": (work / "inventory.json").as_posix(),
         "targets": (work / "targets.json").as_posix(),
         "comments": (work / "comments.json").as_posix(),

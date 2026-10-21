@@ -119,6 +119,32 @@ class DiffParserTests(unittest.TestCase):
         self.assertEqual(entry["new_path"], "b/new.py")
         build_rows(entry, "new\n")
 
+    def test_rename_and_copy_distinguish_real_a_b_directories_from_prefixes(self):
+        """接頭辞の有無、引用、本文変更の有無によらず、実際のa/・b/を保持する。"""
+        for operation in ("rename", "copy"):
+            for prefixed in (False, True):
+                for quoted in (False, True):
+                    for changed in (False, True):
+                        with self.subTest(operation=operation, prefixed=prefixed, quoted=quoted, changed=changed):
+                            old = "a/file name.py"
+                            new = "b/file name.py"
+                            old_header = "a/" + old if prefixed else old
+                            new_header = "b/" + new if prefixed else new
+                            quote = lambda value: f'"{value}"' if quoted else value
+                            patch = (
+                                f"diff --git {quote(old_header)} {quote(new_header)}\n"
+                                f"similarity index {'80' if changed else '100'}%\n"
+                                f"{operation} from {quote(old)}\n{operation} to {quote(new)}\n"
+                            )
+                            if changed:
+                                patch += f"--- {quote(old_header)}\n+++ {quote(new_header)}\n@@ -1 +1 @@\n-x\n+y\n"
+                            entry = single(patch)
+                            self.assertEqual((entry["old_path"], entry["new_path"]), (old, new))
+                            rows = build_rows(entry, "y\n" if changed else "same\n")
+                            self.assertEqual([row["text"] for row in rows], ["x", "y"] if changed else ["same"])
+                            self.assertEqual(entry["metadata"][operation + " from"], old)
+                            self.assertEqual(entry["metadata"][operation + " to"], new)
+
     def test_new_file_requires_whole_current_content(self):
         """新規追加パッチが2行を宣言するケースで、変更後全文を照合する。
 

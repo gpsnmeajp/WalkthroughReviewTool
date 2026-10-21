@@ -1,412 +1,1932 @@
 {
-  "overview": "# UI改善と対象外一覧の整理\n\nコードと解説を読む領域を広げ、カードから該当コードへ移動しやすくした変更です。対象外一覧には確認が必要なファイルを残し、Git管理データ・Gitの無視対象・ドットフォルダ配下を省きます。\n\n## 今回の比較範囲\n\n**修正直前の保存済みコード（2026年10月21日 02:22:13 JST）→ UI修正後の作業コピー**を比較した差分レビューです。既存の `example/review.json` の `files[].text` を比較元として保存し、実ファイルとの相違があった **10ファイル**を収録しました。以前からあったHEADとの差分を今回の変更へ混ぜていません。比較元の53ファイルのうち、残り43ファイルは同一で、新たな自作ファイルの追加・削除もありません。\n\n変更後の全文はPython CLIが実ファイルから取り込み、旧行は保存済み本文から作成した `diff.patch` で復元しています。10ファイルすべてで旧側全文と比較元の一致を確認しました。パッチは本文の差分を表し、Gitのモード・名前変更・コピーの履歴は比較対象に含みません。今回の `diff_summary` は全対象で空です。\n\n## 要求と実装を対応付けて読む\n\n| 確認する変更 | 主な参照先 |\n| --- | --- |\n| カード本文・余白から該当行へ移動する | [カード生成とイベント判定](review:skills/walkthrough-review/assets/ui/app.js#L347) |\n| 質問・リンク・図拡大・文章選択を妨げない | 同じカードのクリック分岐図と、[操作の回帰テスト](review:dev/tests/ui_logic.test.cjs#L1) |\n| 全体ヘッダとオフライン表示を削除する | [削除した旧ヘッダ](review:skills/walkthrough-review/assets/templates/index.html#O16) |\n| 概要本文を主役にし、ソースヘッダを小さくする | [概要の構造](review:skills/walkthrough-review/assets/templates/index.html#L44)、[寸法とスクロール](review:skills/walkthrough-review/assets/ui/style.css#L3) |\n| 初期表示を「対象」にし、「すべて」を右端へ置く | [HTMLのフィルタ](review:skills/walkthrough-review/assets/templates/index.html#L33)、[状態の初期値](review:skills/walkthrough-review/assets/ui/app.js#L26) |\n| 対象外の説明を簡潔にし、正常な照合バッジを省く | [表示切替](review:skills/walkthrough-review/assets/ui/app.js#L505)、[解説カード](review:skills/walkthrough-review/assets/ui/app.js#L347) |\n| 対象外一覧から管理・無視対象を省く | [Git判定](review:skills/walkthrough-review/scripts/walkthrough.py#L130)、[表示対象外の共通条件](review:skills/walkthrough-review/assets/ui/app.js#L33) |\n| 要求と検証方法を残す | [要求書の追記](review:dev/docs/DRECTION.md#L77)、[開発用チェック項目](review:dev/README.md#L1) |\n\n## データと操作の流れ\n\nPythonは全件走査を維持したまま、Gitの `check-ignore` で `git_ignored` を付けます。JavaScriptは保存済みの一覧に対し、未選択であること、Gitの無視対象でないこと、`.git` やドットフォルダ配下でないことを同じ関数で判定します。その結果を右ペイン、「対象外」フィルタ、表示件数に共用します。「すべて」は全走査結果を保ち、「対象」ではAIが明示選択したファイルをそのまま表示します。\n\nカードの行範囲が有効なら、行番号ボタンとカード全体が同じナビゲーションへ進みます。子コントロールの操作やカード内の文章選択はその前に分岐させます。行範囲が消失したカードは移動可能とせず、参照警告と質問操作を残します。正常な照合バッジは生成しませんが、未照合・不一致・参照切れの警告処理は維持します。\n\nレイアウトでは、全体ヘッダの撤去と余白の縮小に加え、グリッドの最小行高とサイドバーの最小高を0まで縮められるようにしています。長いツリーが画面全体を押し広げず、各ペイン内でスクロールするための変更です。狭い画面の一覧開閉はメイン見出し横と一覧内のボタンへ移動しました。\n\n## 対象外と、保証しないこと\n\n走査した **529項目**はすべて一覧へ残し、走査警告はありません。本文対象外は519件です。内訳は今回変更のない自作ファイル43件、同梱ライブラリ・ライセンス5件、置換前の `example` 生成物15件、Git管理データ244件、Gitの無視対象である生成物・キャッシュ212件です。今回のUIではこのうち63件を対象外一覧に表示します。対象外は「確認済み・問題なし」を意味しません。\n\nGitがない・非リポジトリ・判定に失敗した場合は、生成を止めず `git_ignored=false` にします。この値はその条件では「Gitの無視対象でないことを確認済み」という保証にはなりません。Gitの判定がなくても、ドットフォルダ配下の表示除外は機能します。ルート直下の `.env` のような**ドットファイル**は、ドットフォルダと同じ理由では自動除外しません。また、Gitで追跡中のファイルはGit自身の規則に従い無視対象にはしません。\n\nこの資料は今回の変更を説明するもので、プロジェクト全体の再監査ではありません。変更のない処理は文脈として全文を収録し、変更点とその保証に解説を集中しています。CSSは既存の1行に多数のルールを置く形式のため、差分行が長く、同じ行を別の観点から説明するカードがあります。\n\n## 検証\n\n今回の修正作業で、Pythonテスト133件中132件成功・1件スキップ、UIロジックテスト27件成功、単独スキルの配布検証成功を確認しました。スキップはWindowsのシンボリックリンク作成権限不足による既存ケースです。\n\n修正したUIはローカルサーバーを使い、概要・コード・対象外フィルタ・カード本文からの移動・質問・内部リンク・図の拡大・旧行へのキーボード移動・警告・狭い画面の一覧開閉を確認しました。長いツリーの画面はみ出しもこの確認で修正しています。\n\nこの差分資料自体についても、全対象の全文・40件の解説・旧新行・図1枚・未解説範囲を自己確認し、最終再ビルド後のハッシュと行参照を検証しました。実ブラウザーでは概要、コード、内部リンク、カード全体からの移動、旧行へのキーボード移動、図の拡大とスクロール連動、図を含む質問文、幅390pxでの一覧開閉とフォーカス復帰を確認しました。コンソールエラーはありません。詳細は同梱の `verification.json` に記録しています。ネットワークを切断した実機検証と実印刷は行っていません。\n\n資料の持ち出しには、`index.html` だけでなく `assets/`、`review.json`、`self-review.md` を含む `example` フォルダ一式を保存してください。再生成に用いた `targets.json`、`comments.json`、`diff.patch`、比較元の説明 `comparison.json` も同梱します。\n",
+  "overview": "# WalkthroughReviewTool 全体ウォークスルーレビュー\n\n現在の作業コピーを全体モードで取り込んだ資料です。配布スキル、画面、開発用入口、テスト、fixture、要求・設計資料、SVG素材の63ファイルを説明します。コード本文はPythonが取得した固定スナップショットで、AIによる抜粋・転写ではありません。今回の資料更新では製品ソースを変更していません。\n\n## 入口から完成資料まで\n\n利用の入口は[スキル手順](review:skills/walkthrough-review/SKILL.md#L29)です。[準備処理](review:skills/walkthrough-review/scripts/prepare_review.py#L1)がプロジェクト外へ作業領域と全件一覧を作り、AIが本文対象を選びます。[生成本体](review:skills/walkthrough-review/scripts/walkthrough.py#L1)のbuildが全文・行番号・旧新Hashを固定します。差分指定時は[パーサー](review:skills/walkthrough-review/scripts/diff_parser.py#L556)がパッチと現在ファイルを照合し、削除本文や権限・名前変更等の付加情報も保持します。\n\nAIは[カード作成ツール](review:skills/walkthrough-review/scripts/comment_cards.py#L237)で固定版を読み、責務・保証・失敗時の挙動を1件ずつ説明します。担当別に全文と全カードを確認し、reviewedを記録してexport、mergeします。最後のbuildでソース変更を再検出し、[画面](review:skills/walkthrough-review/assets/ui/app.js#L1)が同じデータから概要・コード・解説・質問文を表示します。スキル手順の図はこの受け渡しを示します。\n\n実装と画面素材の正本はskills/walkthrough-review配下です。devのCLIはその正本を読み込む薄い入口です。[スキル単体配布](review:dev/tools/package_skill.py#L234)と[開発用ZIP](review:dev/tools/package_release.py#L216)は目的と収録範囲が異なります。要求の原本は[DRECTION.md](review:dev/docs/DRECTION.md#L7)、保存仕様は[data-format.md](review:dev/docs/data-format.md#L13)にあります。\n\n## 今回取り込んだ修正\n\n- カードID・担当名の大小文字だけが異なる保存先を拒否し、Windows上の上書きを防ぎます。作成時Hashが同じ値なら大文字表記も一致とし、元の表記を保持します。[実装](review:skills/walkthrough-review/scripts/comment_cards.py#L237)と[回帰確認](review:dev/tests/test_comment_cards.py#L1)を対応させました。\n- no-prefix形式のrename/copyで、実パス先頭のa/・b/を誤って取り除かないよう、[付加情報との照合](review:skills/walkthrough-review/scripts/diff_parser.py#L203)でパスを確定します。[テスト](review:dev/tests/test_diff_parser.py#L1)がプレフィックス条件を組み合わせて確認します。\n- largeケースの[期待値](review:dev/tools/prepare_browser_acceptance.py#L259)は50,000行・解説2件・verified 2件へ修正済みです。旧10,000行・解説1件という不一致の説明を更新しました。[専用テスト](review:dev/tests/test_browser_acceptance.py#L1)で全ケースの数値期待値と生成結果、Hashの3段階を照合します。\n\n## 対象と対象外\n\n全ファイルを走査したうえで、自作の意味のある実装・設定・テスト・資料を本文へ選びました。対象外は.gitの内部情報、既存docs、dev/output・dev/dist・テスト一時領域等の生成物、Pythonキャッシュ、同梱の第三者ライブラリ6ファイル、PNG素材2ファイルです。SVGの元素材は対象に含めています。対象外を確認済み・問題なしとは扱いません。走査の読取警告はありません。\n\n画面の対象外一覧はGit無視設定などで初期表示を絞るため、全件は「すべて」で確認できます。レビュー自身の生成物を再帰的に本文へ含めないため、旧docsは今回の対象外です。以前のdocsはdev/output/review-historyへZIPで退避しました。旧資料に存在した指摘1.mdは現在のプロジェクトにないため、その旧解説は今回の資料から外しました。\n\nfixture中のconfig.json・notes.txtを「対象外」とする説明は、サンプルのtargets.jsonを使う資料での位置付けです。現在のツール全体レビューではfixture自身も取り込んでいます。fixture内JSONの内部リンクはサンプルprojectをルートとする入力例です。\n\n## 確認の範囲と制約\n\n全63対象の固定全文・全カード・図を担当全体で自己確認し、行範囲・版・内部リンクとファイル間の接続を照合しました。Hash一致はコードと作成時記録の一致を示し、説明の意味や作成者の真正性の証明ではありません。未解説の行は機械的な被覆率であり、宣言や例を含む全行へ解説を付ける要件ではありません。\n\n直前の修正確認ではPython 170件中169件成功・1件スキップ、UIロジック38件成功、単独配布検証成功でした。スキップはWindowsでシンボリックリンク作成権限がない条件です。これらは実ブラウザーの見た目・操作や、AIの説明品質すべてを保証するものではありません。今回の成果物確認の詳細は同梱verification.jsonへ記録します。\n\nHTMLは静的で、元コードの自動監視やAIへの自動送信を行いません。更新検出にはbuildが必要です。差分の削除本文はパッチから復元し、旧実ファイルに照合した結果ではありません。画面は表示付近の行だけをDOMへ置くため、標準のページ内検索・選択には範囲の制約があります。全文はreview.json・self-review.mdにも残ります。Workerが使えない場合も本文を表示します。\n\nファイル保存や配布物の置換は個々のファイルごとに行い、複数ファイル全体を同時確定するトランザクションではありません。生成ツールの成功、Hashの一致、受入データの整合、画面の表示確認はそれぞれ異なる確認です。\n\n\n今回のブラウザー確認はループバックHTTPで、概要・コード・解説・内部リンク・図の拡大とスクロール連動・図付き質問文を確認しました。通信を切ってHTMLを直接開くfileスキームでの確認、モバイル表示、全受入ケースの実ブラウザー操作は今回実施していません。\n",
   "comments": [
     {
-      "id": "layout-remove-banner",
-      "file": "skills/walkthrough-review/assets/templates/index.html",
-      "start_line": 16,
-      "end_line": 26,
-      "side": "old",
-      "code_hash": "689d79023d9a3078e94a1308c44f5228b358318157004e10af5480ec3c0ed414",
-      "title": "旧：全体ヘッダを構成していた要素を削除",
-      "body": "旧版ではブランド、レビュー名、モード、オフライン表示が全画面共通の帯に並び、ソースを開いても上部を占有していました。この一式をテンプレートから削除します。レビュー名とモードは[概要のメタ情報](review:skills/walkthrough-review/assets/templates/index.html#L50)へ、狭い画面の一覧開閉は[メインペイン](review:skills/walkthrough-review/assets/templates/index.html#L44)へ移すため、必要な識別情報と操作は失いません。"
-    },
-    {
-      "id": "layout-keep-warning",
-      "file": "skills/walkthrough-review/assets/templates/index.html",
-      "start_line": 15,
-      "end_line": 23,
-      "side": "new",
-      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
-      "title": "ヘッダを消しても、問題の警告は独立して残す",
-      "body": "ページ先頭にはキーボード用のスキップリンクと、通常はhiddenの照合警告が残ります。不一致や未照合などがあればJavaScriptがこの領域を表示します。正常なカードの照合バッジを省いた変更と、確認が必要な警告を消す変更は別であり、この領域は後者を避ける役割を持ちます。"
-    },
-    {
-      "id": "layout-filter-controls",
-      "file": "skills/walkthrough-review/assets/templates/index.html",
-      "start_line": 25,
-      "end_line": 41,
-      "side": "new",
-      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
-      "title": "初期選択と並び順をHTMLと状態の両方で揃える",
-      "body": "フィルタは「対象」「対象外」「すべて」の順になり、対象だけaria-pressed=trueで開始します。[JavaScriptの初期状態](review:skills/walkthrough-review/assets/ui/app.js#L26)もselectedに揃えることで、見た目と実際に並ぶファイルが食い違いません。一覧内のclose-treeは、ヘッダを撤去したあともモバイルの引き出しを閉じるための操作です。対象外の省略は[共通の判定](review:skills/walkthrough-review/assets/ui/app.js#L33)で行い、全件走査自体は維持します。"
-    },
-    {
-      "id": "layout-overview-first",
-      "file": "skills/walkthrough-review/assets/templates/index.html",
-      "start_line": 44,
-      "end_line": 60,
-      "side": "new",
-      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
-      "title": "概要はタイトル・件数を小さくまとめ、本文へ直結する",
-      "body": "固定の大きなキャッチコピーと重複見出しを取り除き、レビュー名・モード・件数をoverview-metaにまとめました。AIが作成した概要を受け取るoverview-contentがその直後に来ます。main-titleはファイルを開くとパスへ切り替わる共通見出しで、英字のkicker用DOMは撤去しています。変更はテンプレートと[表示切替](review:skills/walkthrough-review/assets/ui/app.js#L505)を同時に合わせています。"
-    },
-    {
-      "id": "layout-code-and-exclusions",
-      "file": "skills/walkthrough-review/assets/templates/index.html",
-      "start_line": 62,
-      "end_line": 85,
-      "side": "new",
-      "code_hash": "b22daf4faec69c2247e0772b7720ee2f8918282134d79048d9f1c0678662cfb4",
-      "title": "コード操作を保ち、解説側の重複見出しを省く",
-      "body": "コードの旧新行凡例・選択範囲・質問ボタン、本文以外の差分表示、独立したスクロール領域は保持します。解説側は見出しと件数・連動ボタンへ整理しました。概要時の対象外一覧には、Git管理・無視対象とドットフォルダ配下を省くことを短く案内します。この説明の実体は表示時の絞り込みであり、保存済みinventoryの削除ではありません。"
-    },
-    {
-      "id": "style-viewport",
-      "file": "skills/walkthrough-review/assets/ui/style.css",
-      "start_line": 3,
-      "end_line": 4,
-      "side": "new",
-      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
-      "title": "画面の高さを内容量に引きずらせない",
-      "body": "workspaceにgrid-template-rows:minmax(0,1fr)、file-sidebarにmin-height:0を設定し、bodyの100dvhとworkspaceのflex:1の内側に各ペインを収めます。長いツリーの最小内容高がグリッド行を押し広げると、overflow:hiddenの外へコードや見出しまで押し出されます。縮小を許可したうえでfile-tree・code-scroll・detail-scrollのoverflow:autoに任せることで、各ペイン内でスクロールできます。CSSは既存の1行に多くのルールを置く形式を保っているため、同じ3行目を説明するカードが複数あります。"
-    },
-    {
-      "id": "style-density",
-      "file": "skills/walkthrough-review/assets/ui/style.css",
-      "start_line": 3,
-      "end_line": 3,
-      "side": "new",
-      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
-      "title": "ヘッダと概要の余白を減らして読める行を増やす",
-      "body": "標準幅のpanel-toolbarは最小91pxから38px、code-toolbarは40pxから29pxへ縮めています。ファイル名は1行のellipsisとし、完全なパスは[JavaScriptがtitle属性へ設定](review:skills/walkthrough-review/assets/ui/app.js#L521)します。overview-metaは折返し可能な小さい文字列・件数の列に変え、概要本文の先頭余白もなくします。コード本文の全文取得・行番号・差分の意味には手を加えていません。"
-    },
-    {
-      "id": "style-click-cue",
-      "file": "skills/walkthrough-review/assets/ui/style.css",
-      "start_line": 3,
-      "end_line": 3,
-      "side": "new",
-      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
-      "title": "移動できるカードだけをポインタと枠で示す",
-      "body": "data-navigable=trueのカードにcursor:pointerとhover時の枠色を付けます。[カード生成](review:skills/walkthrough-review/assets/ui/app.js#L347)が行範囲の有効性を確認して属性を付けるため、消失した参照先まで移動できるようには見せません。ここは操作の手掛かりを担い、クリックの除外条件やナビゲーション自体はJavaScriptが担当します。"
-    },
-    {
-      "id": "style-warning",
-      "file": "skills/walkthrough-review/assets/ui/style.css",
-      "start_line": 4,
-      "end_line": 4,
-      "side": "new",
-      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
-      "title": "正常バッジ用CSSを撤去し、異常表示の区別は維持",
-      "body": "hash-verifiedの装飾は不要になり削除しています。一方、hash-notice、mismatch、needs-review、reference-warning、無効な行ボタンのスタイルは残っています。正常時のノイズを減らしても、未照合・不一致・消えた参照先を見分ける能力は維持する構成です。"
-    },
-    {
-      "id": "style-breakpoints",
-      "file": "skills/walkthrough-review/assets/ui/style.css",
-      "start_line": 5,
-      "end_line": 9,
-      "side": "new",
-      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
-      "title": "各画面幅でも古いヘッダ用の高さを引きずらない",
-      "body": "1600px以上でも概要の上下余白を小さくし、1150px以下ではツールバーのコンパクトな寸法を維持します。950px以下のファイル一覧はtop:0の固定引き出しになり、mobile-tree-toggleを表示します。650px以下はコードと解説を縦に並べ、bodyとworkspaceを内容に合わせて伸ばします。旧ヘッダ70px/59pxに合わせたオフセットを削除しているため、空白帯が残りません。"
-    },
-    {
-      "id": "style-print",
-      "file": "skills/walkthrough-review/assets/ui/style.css",
-      "start_line": 14,
-      "end_line": 14,
-      "side": "new",
-      "code_hash": "2b78bb3508218aacd2ee237336ee34a0a56d2192b8787152331a535e0c6993a2",
-      "title": "移動した一覧ボタンを印刷に出さない",
-      "body": "全体ヘッダの削除に伴い、印刷時に隠す対象をapp-headerからmobile-tree-toggleへ変更しています。ファイル一覧・質問UI・スクロール制約を印刷用に外す既存の規則は保持します。このレビューで確認したのは画面表示と操作であり、プリンターによる実印刷は検証範囲に含めません。"
-    },
-    {
-      "id": "ui-filter-policy",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 23,
-      "end_line": 37,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "起動時は対象を表示し、対象外一覧だけを絞る",
-      "body": "初期フィルタを `all` から `selected` に変え、起動時のファイル一覧には選ばれた対象を表示します。全件の `inventoryMap` は残し、右ペイン用の `excluded` だけを共通判定で絞っています。\n\n対象外一覧に載せるのは、未選択で、Gitの除外対象でなく、`.git` をパス要素に含まず、ドットフォルダ配下でもない項目です。最後のパス要素はフォルダ判定から外すため、`.gitignore` や `.env` などのドットファイルはそれだけでは隠しません。`.git` はworktreeでファイルになる場合も省きます。旧データに `git_ignored` がなければ未指定を偽として扱い、Gitによる省略は行いません。"
-    },
-    {
-      "id": "ui-tree-preservation",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 134,
-      "end_line": 168,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "表示を絞っても「すべて」と明示対象は失わない",
-      "body": "左の「対象外」も [共通の判定](review:skills/walkthrough-review/assets/ui/app.js#L33) を呼ぶので、右ペインと異なるファイルが出ることを防ぎます。「対象」は `selected` だけで決まり、ドットフォルダ配下やGit除外対象でも、明示的に選ばれたものは表示します。「すべて」にはこの省略条件がなく、走査された項目を検索できます。\n\nその後に検索語を適用してツリーを作る流れは従来どおりです。レビューからのデータ削除や対象選定の変更ではなく、注意して見る対象外一覧の表示条件を変えています。"
-    },
-    {
-      "id": "ui-excluded-counts",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 171,
-      "end_line": 200,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "対象外の表示件数と、レビュー済みという意味を分ける",
-      "body": "一覧が空でも、省略された対象外ファイルが残る可能性があります。このため「すべてのファイルが対象です」という旧表示をやめ、「表示する対象外ファイルはありません」と「すべて」への案内に変更しました。\n\n概要の数値も同じ `excluded` の件数を使い、ラベルを「対象外一覧」にしています。走査したファイル数は全件、レビュー対象数は取り込まれたコードの件数、対象外一覧は省略後の表示件数なので、最後の2つを足して走査総数になるとは限りません。"
-    },
-    {
-      "id": "ui-old-click-entry",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 352,
-      "end_line": 356,
-      "side": "old",
-      "code_hash": "ed8a9a39e73a1288bcd77a909a5baec06385bc8d5d9aa686f8986df75b21b26a",
-      "title": "変更前は行番号ボタンだけが移動の入口だった",
-      "body": "旧版では行範囲を示すボタンにだけ `navigate` を結び付けていました。カードの見出しや本文、余白をクリックしても、この経路からはコードへ移動しません。新版は [同じ移動処理をカード全体からも呼ぶ](review:skills/walkthrough-review/assets/ui/app.js#L362) ようにし、行番号ボタンはキーボードで使える入口として残しています。"
-    },
-    {
-      "id": "ui-card-click-routing",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 347,
-      "end_line": 378,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "カード全体から移動し、内側の操作はそのまま使う",
-      "body": "`jumpToCode` にファイル・開始行・旧新版・終端行・カードIDをまとめ、行番号ボタンとカードクリックで共有します。有効な行範囲のカードだけに `data-navigable` とクリック処理を付けるので、CSSのポインタ表示と実際の移動可否が一致します。\n\nクリック位置がリンク、ボタン、入力欄などの内側なら、親カードは何もしません。ボタン内の文字やアイコンにも `closest` が効くため、質問・図の拡大・別箇所へのリンクにカード側の移動が重なることを避けます。すでに既定動作が抑止された `defaultPrevented` のイベントや、カード内の文章を選択している場合も移動しません。\n\nカード全体を新しいボタンにはせず、既存の行番号ボタンを残しています。キーボードではそのボタンを使い、質問ボタンも独立して操作できます。行範囲が消えたカードには全体クリックを付けず、行番号ボタンを無効にします。",
-      "diagrams": [
-        {
-          "title": "カードクリックをコード移動へ渡す条件",
-          "description": "有効な参照行を持つカードでの分岐です。子の操作・既定動作が抑止されたイベント・カード内の選択テキストではカードの移動処理を止め、それ以外を共通の移動関数へ渡します。",
-          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 460 570\">\n<title>カードクリックをコード移動へ渡す条件</title>\n<desc>有効な参照行のカードで、子の操作や既定動作が抑止されたイベント、カード内の選択テキストは移動処理から除き、それ以外をコード移動へ渡す。</desc>\n<defs><marker id=\"arrow\" markerWidth=\"8\" markerHeight=\"8\" refX=\"7\" refY=\"4\" orient=\"auto\"><path d=\"M0 0 L8 4 L0 8 Z\" fill=\"#475569\"/></marker></defs>\n<g fill=\"none\" stroke=\"#475569\" stroke-width=\"2\" marker-end=\"url(#arrow)\">\n<path d=\"M265 65 V99\"/><path d=\"M265 180 V229\"/><path d=\"M265 310 V359\"/>\n<path d=\"M100 140 H35 V510 H99\"/><path d=\"M100 270 H35\"/>\n</g>\n<g font-family=\"sans-serif\" text-anchor=\"middle\" font-size=\"19\" fill=\"#1f2937\">\n<rect x=\"100\" y=\"20\" width=\"330\" height=\"45\" rx=\"8\" fill=\"#e0f2fe\" stroke=\"#0369a1\"/><text x=\"265\" y=\"49\">有効なカードをクリック</text>\n<rect x=\"100\" y=\"100\" width=\"330\" height=\"80\" rx=\"8\" fill=\"#fff7ed\" stroke=\"#c2410c\"/><text x=\"265\" y=\"132\">リンク・ボタン等の操作？</text><text x=\"265\" y=\"160\">既定動作が抑止済み？</text>\n<text x=\"65\" y=\"129\" font-size=\"17\">はい</text><text x=\"287\" y=\"211\" font-size=\"17\">いいえ</text>\n<rect x=\"100\" y=\"230\" width=\"330\" height=\"80\" rx=\"8\" fill=\"#fff7ed\" stroke=\"#c2410c\"/><text x=\"265\" y=\"262\">カード内の文章を</text><text x=\"265\" y=\"290\">選択している？</text>\n<text x=\"65\" y=\"258\" font-size=\"17\">はい</text><text x=\"287\" y=\"342\" font-size=\"17\">いいえ</text>\n<rect x=\"100\" y=\"360\" width=\"330\" height=\"70\" rx=\"8\" fill=\"#dcfce7\" stroke=\"#15803d\"/><text x=\"265\" y=\"388\" font-weight=\"600\">該当コードへ移動</text><text x=\"265\" y=\"415\" font-size=\"17\">旧/新・範囲・カードIDを渡す</text>\n<rect x=\"100\" y=\"480\" width=\"330\" height=\"65\" rx=\"8\" fill=\"#f1f5f9\" stroke=\"#64748b\"/><text x=\"265\" y=\"507\">カードの移動処理はしない</text><text x=\"265\" y=\"533\" font-size=\"17\">元の操作・選択を維持</text>\n</g>\n</svg>"
-        }
-      ]
-    },
-    {
-      "id": "ui-hash-warning-preserved",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 381,
-      "end_line": 389,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "正常時のバッジだけをなくし、確認が必要な状態は残す",
-      "body": "正常な `verified` の分岐で付けていた「✓ コード照合済み」を削除しました。照合の実行や結果データを削る変更ではありません。不一致・未照合では従来どおり説明と期待Hash／実際のHashを表示し、参照行の消失やリンクの警告も残ります。\n\n上部の [照合警告の集約](review:skills/walkthrough-review/assets/ui/app.js#L49) と、質問文に照合情報を含める処理も維持しています。普段の読書を妨げる正常表示を減らし、再確認が必要な状態を見分けられるようにしています。"
-    },
-    {
-      "id": "ui-file-caption",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 505,
-      "end_line": 536,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "ヘッダを小さくしても、パスと表示できない理由を残す",
-      "body": "削除した英字kickerへのDOM参照を外し、メイン見出しにはファイルパスを表示します。長いパスがCSSで省略される場合に備え、同じ全文を `title` 属性にも設定しています。\n\nコード本文がないときの文言は3通りに分けています。未選択のファイルには「このファイルはレビュー対象外です。」、選択済みだがコードを持たない項目には表示できない旨、一覧にも存在しないパスには参照先が存在しない旨を伝えます。すべてを「対象外」と扱うと取込失敗や壊れた参照を見誤るため、状態の区別は維持しています。"
-    },
-    {
-      "id": "ui-navigation-contract",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 550,
-      "end_line": 598,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "既存の移動処理へ渡すことで、旧新版とカードの選択を保つ",
-      "body": "この移動処理自体は今回の変更対象ではありません。新しいカードクリックもここへ渡すため、URLのhashに行・旧新版・カードIDを記録する既存の動作を引き継ぎます。同じ開始行を持つカードが複数あっても、指定IDと行範囲が一致するカードを優先し、別のカードへ戻りません。\n\n同じファイルの範囲移動では再描画せず、コードの強調と両ペインの位置を更新します。旧行を指定したときは旧側の行だけを強調します。これらの回帰確認は [重複カードと旧新版のテスト](review:dev/tests/ui_logic.test.cjs#L420) にあります。"
-    },
-    {
-      "id": "ui-mobile-close-focus",
-      "file": "skills/walkthrough-review/assets/ui/app.js",
-      "start_line": 681,
-      "end_line": 690,
-      "side": "new",
-      "code_hash": "b49abcb6df3f5695717cb067f89384611a45c51e2155911b873cf247a18bdae0",
-      "title": "全体ヘッダをなくした後も、狭い画面で一覧を閉じられる",
-      "body": "一覧を開く既存処理は、開閉状態を `aria-expanded` に反映し、開いたときに検索欄へフォーカスします。今回追加した閉じるボタンは、一覧の表示クラスを外し、状態を閉じた値へ更新し、開くボタンへフォーカスを戻します。\n\n開くボタンをメインペインの小さなツールバーへ移した構成でも、一覧に覆われたボタンを探さずに戻れる経路です。ブラウザー上では狭い画面での開閉とフォーカスの戻りを別途確認する必要があります。"
-    },
-    {
-      "id": "uitest-source-boundary",
-      "file": "dev/tests/ui_logic.test.cjs",
+      "id": "integration-line-endings",
+      "file": ".gitattributes",
       "start_line": 1,
-      "end_line": 26,
-      "side": "new",
-      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
-      "title": "製品のJavaScriptを読み、今回の表示判定も検証する",
-      "body": "テスト用に製品ロジックを複製せず、`app.js` 全体の構文確認と、関数をVMへ読み込む既存の仕組みを使います。今回の追加は `isVisibleExcluded` を読み込む行です。\n\nこのファイルには従来からスクロール連動、質問文、SVG図、差分情報、行移動の検証もあります。それらを今回の新機能とは扱わず、変更で壊していないかを確認する既存の回帰テストとして残しています。"
+      "end_line": 2,
+      "title": "本文の改行とWindowsバッチの実行形式を分ける",
+      "body": "通常のテキストはLF、WindowsバッチはCRLFとしてGitへ扱いを指定します。同じソースを異なるOSで編集するときの不要な差分を抑える設定です。\n\nレビュー側では元バイト列のHashと、BOM除去・LF統一後のコードHashを分けます。したがって改行形式だけの違いを、解説が参照するコードの意味の変更と同一視しません。[保存形式の契約](review:dev/docs/data-format.md#L71)と合わせて確認します。\n",
+      "code_hash": "e30b1201fa9f4716f126b0bf3b91f63fc7c00c53fab5cadf7a8f33d0d1796689",
+      "side": "new"
     },
     {
-      "id": "uitest-exclusion-boundaries",
-      "file": "dev/tests/ui_logic.test.cjs",
-      "start_line": 36,
-      "end_line": 46,
-      "side": "new",
-      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
-      "title": "ドットフォルダとドットファイルを混同しない境界条件",
-      "body": "`.git` 自体・その配下・直下と入れ子のドットフォルダ・Git除外対象を対象外一覧から省くことを確認します。一方、`.gitignore` や `.env` のように最後の要素だけがドットで始まるファイルは残します。\n\n`git_ignored` が未指定の旧データと `false` のデータを両方試し、属性追加後も通常の対象外ファイルが消えないことを確認しています。実際のGit無視規則の判定はPython側のテストの担当で、このテストは与えられた属性から表示を決める範囲です。"
+      "id": "integration-ignore-generated",
+      "file": ".gitignore",
+      "start_line": 1,
+      "end_line": 6,
+      "title": "開発生成物をGit管理から外す",
+      "body": "Pythonキャッシュ、テストの一時領域、ブラウザー検証結果、配布アーカイブをGitの管理対象から外します。実装を保守する場所と、実行のたびに変わる成果物を分けるための設定です。\n\nこの指定はディスク上のファイルの削除やレビュー走査の省略を意味しません。走査一覧には残り、本文へ取り込むかどうかはAIの対象選定で決めます。\n",
+      "code_hash": "4fa53ca511640577046d556a97732407bd35c0274ba501fd1d6c6e2dbb3e7178",
+      "side": "new"
     },
     {
-      "id": "uitest-dom-model",
-      "file": "dev/tests/ui_logic.test.cjs",
-      "start_line": 170,
-      "end_line": 201,
-      "side": "new",
-      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
-      "title": "クリックの親子関係をテスト用DOMに追加する",
-      "body": "既存の描画用スタブへ `dataset`、親要素、`contains`、`closest` を追加しました。これにより、ボタン内の文字を押したケースや、選択テキストがカード内にあるケースを製品のクリック処理に渡せます。\n\nこれは必要な親子関係だけを再現するモデルです。ブラウザーのイベント配送、実際の文字選択、Tabキー移動、CSSの見た目を再現するものではないため、Nodeの合格だけでは画面の操作確認を代替しません。"
+      "id": "integration-repository-entry",
+      "file": "AGENTS.md",
+      "start_line": 3,
+      "end_line": 13,
+      "title": "スキルの実行とスキル自体の変更を区別する入口",
+      "body": "資料作成依頼は同梱の[スキル手順](review:skills/walkthrough-review/SKILL.md#L29)へ案内し、対象選定から提示までAIが進めます。一方、スキルの監査・変更依頼を、勝手に全プロジェクトの資料作成へ読み替えないよう範囲を定めています。\n\n配布実装はskills配下に一元化し、開発用コードはその実体を呼び出します。変更後のテストと単独配布検証までを保守手順に含めています。\n",
+      "code_hash": "d99047c93153243be96a21419d0907c13f41e83c0eecc618fb5a9a95406d2469",
+      "side": "new"
     },
     {
-      "id": "uitest-filter-and-empty",
-      "file": "dev/tests/ui_logic.test.cjs",
-      "start_line": 204,
-      "end_line": 254,
-      "side": "new",
-      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
-      "title": "一覧を省略しても、全件へ戻れることを確認する",
-      "body": "通常・ドットフォルダ・Git除外・明示対象を同じ入力へ混ぜ、製品の `renderTree` を対象外／対象／すべての順で呼びます。対象外は共通判定と一致し、明示対象は除外属性があっても残り、「すべて」では全件が戻ることを検証します。`.git/config` を検索して見つかることも確認しています。\n\n空の対象外一覧では、全ファイルがレビュー対象になったと断定せず、表示する項目がないという文と「すべて」への案内が出ることを確認します。これは管理ファイルを省略した結果の空状態でも誤解を招かないための検証です。"
+      "id": "integration-product-purpose",
+      "file": "README.md",
+      "start_line": 3,
+      "end_line": 9,
+      "title": "人間の精読を支援する役割とAI・Pythonの分担",
+      "body": "この製品の目的は、ソース全文と設計説明を並べ、人間が時間をかけて成果物を理解することです。AIは対象選定と意味の説明を担い、Pythonは実ファイルからの取り込みと行番号・Hashの作成を担います。\n\n質問ボタンは、該当箇所を含む質問文を組み立てる入口です。画面そのものがAIへ問い合わせて回答を取得する構成ではありません。\n",
+      "code_hash": "da32d49cb0955cceea21c203efc79c7a8ecc7af7a3df5eab7752011f1896f4f4",
+      "side": "new"
     },
     {
-      "id": "uitest-card-scope",
-      "file": "dev/tests/ui_logic.test.cjs",
-      "start_line": 303,
-      "end_line": 335,
-      "side": "new",
-      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
-      "title": "製品のカード描画を通して、新しいクリック入口を確認する",
-      "body": "`withCommentCard` は実際の行範囲解決と `renderComments` を使い、移動先の呼出しを記録して確かめます。カードの余白・見出し・本文を押したとき、ファイル、旧行、終端、カードIDが同じ値で渡ることを確認します。\n\nあわせて移動可能を示す属性が付くことと、正常な照合バッジが生成されないことを確認しています。移動後のスクロール自体は別の既存テストとブラウザー確認の範囲です。"
+      "id": "integration-product-distribution",
+      "file": "README.md",
+      "start_line": 27,
+      "end_line": 48,
+      "title": "自己完結したフォルダを渡し、保存時点のコードを読む",
+      "body": "省略時は全体レビューで、差分は明示したときに選びます。導入単位はSKILL.md単体ではなく、scripts・references・assetsを含むスキル一式です。完成レビューもHTMLだけを抜き出さず、assets等を含むフォルダごと保持します。\n\n資料は作成時点のスナップショットです。現在のファイルを監視せず、再buildによる取り込み直しで変更を検出します。Hash一致が証明するのはコードの同一性であり、説明内容の正しさではありません。\n",
+      "code_hash": "da32d49cb0955cceea21c203efc79c7a8ecc7af7a3df5eab7752011f1896f4f4",
+      "side": "new"
     },
     {
-      "id": "uitest-card-operations",
-      "file": "dev/tests/ui_logic.test.cjs",
-      "start_line": 337,
-      "end_line": 375,
-      "side": "new",
-      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
-      "title": "子の操作、文章選択、消えた参照をカード移動から守る",
-      "body": "子ボタン内の要素やリンクの文字を押した場合、カード側の移動が呼ばれないことを確認します。カード内の文章選択と、すでに `defaultPrevented` が付いたイベントも同様です。行番号ボタンには利用可能な状態と移動先を説明するラベルが残り、既存のキーボード入口を保つことを検証します。\n\n参照行が消えた場合にはカード全体のハンドラも移動可能属性も付けず、行番号ボタンを無効にします。それでも不一致・参照警告を表示し、解説への質問は実行できることを確認しています。実際のキー入力やイベントの伝播はブラウザー確認で補います。"
+      "id": "integration-dev-canonical",
+      "file": "dev/README.md",
+      "start_line": 5,
+      "end_line": 23,
+      "title": "正本・補助入口・検証生成物の置き場所",
+      "body": "配布するコードと画面素材はskills配下が正本で、devのCLIはその実装へ接続する薄い入口です。コードを二重保守せず、製品と開発環境で異なる動作を持ち込まない構成になっています。\n\nテスト・fixture・検証出力・梱包物はdev側に集めます。ここに掲載された相対コマンドはdevを作業ディレクトリにする前提なので、ルートからの呼び出しではパスを補います。\n",
+      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "side": "new"
     },
     {
-      "id": "uitest-template-ids",
-      "file": "dev/tests/ui_logic.test.cjs",
-      "start_line": 505,
-      "end_line": 510,
-      "side": "new",
-      "code_hash": "419d1a082e5594702732f84c0835c4571fd5d65e1514b382c34d5db684801d12",
-      "title": "削除・移動した画面部品とJavaScriptの接続を照合する",
-      "body": "この既存テストはテンプレートのID重複と、JavaScriptが直接参照するIDの欠落を検出します。今回の英字kicker削除や `close-tree` 追加でも、片側だけ直して起動時に例外になる変更を検出できます。\n\nIDが存在することの検査であり、部品の配置、文字切れ、フォーカス順序までは保証しません。ヘッダの高さや狭い画面の操作は表示確認で評価します。"
+      "id": "integration-dev-verification",
+      "file": "dev/README.md",
+      "start_line": 25,
+      "end_line": 44,
+      "title": "自動検証とAIの行動評価の守備範囲",
+      "body": "Pythonテストは入力検証、保存、ハッシュ、再生成、単独配布の動作を確認し、NodeのUIテストは画面ロジックを確認します。カード作成と大規模処理には専用の回帰テストがあります。\n\n実ブラウザーの見た目と操作、AIが説明を十分に作成したかは別の確認です。evals.jsonは実行結果ではなく、AIへ依頼して完了まで進めるかを見るシナリオ集です。\n\n受入データの数値メタデータは専用の[回帰テスト](review:dev/tests/test_browser_acceptance.py#L1)で生成結果へ照合します。ここを通っても、実画面の表示・操作確認は別途必要です。\n",
+      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "side": "new"
     },
     {
-      "id": "py-ignore-query",
-      "file": "skills/walkthrough-review/scripts/walkthrough.py",
-      "start_line": 130,
-      "end_line": 147,
-      "side": "new",
-      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
-      "title": "Gitの無視規則を、一覧表示用の情報として取り込む",
-      "body": "今回追加した `annotate_git_ignored` は、各項目へ `git_ignored` を付けるだけの処理です。対象一覧から項目を削除せず、`selected` にも触れません。これにより「対象外一覧を整理すること」と「レビューするファイルを決めること」を分けています。\n\n`git -C <project> check-ignore --stdin -z` に相対パスを一括で渡すため、ルートと子フォルダの `.gitignore`、否定規則、Gitの追跡状態をGit自身に判定させられます。追跡済みファイルは、名前が無視パターンに一致しても無視対象になりません。入力・出力をNUL区切りにし、空白や日本語を含む名前を行分割で取り違えないようにしています。項目がなければGitは起動しません。\n\n表示上の除外に使うのは、この判定結果です。`.git` やドットで始まるフォルダ配下かどうかは画面側で別に判定します。Gitの規則との一致は[実Gitを使うテスト](review:dev/tests/test_walkthrough.py#L177)で確認しています。"
-    },
-    {
-      "id": "py-ignore-fallback",
-      "file": "skills/walkthrough-review/scripts/walkthrough.py",
-      "start_line": 148,
-      "end_line": 155,
-      "side": "new",
-      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
-      "title": "判定できない場合も、全件一覧とコードの生成を続ける",
-      "body": "Gitが見つからないなどの `OSError` と15秒のタイムアウトでは処理を戻します。Gitの終了値は0（該当あり）と1（該当なし）だけを受け付け、それ以外の終了時に得られた部分出力は利用しません。成功した場合だけ、出力されたパス集合に基づいて `git_ignored` を更新します。\n\n[呼び出しの冒頭](review:skills/walkthrough-review/scripts/walkthrough.py#L138)で全項目を `false` にしているため、判定失敗によってファイルが対象外一覧から隠れることはありません。Gitがない環境でも元からあるレビュー生成機能は使えます。一方、この値だけでは「非無視と確認できた」と「判定できなかった」を区別できず、専用警告も追加されません。その環境ではGitの無視対象による絞り込みは効かない、という範囲の実装です。\n\nこの継続方針と、失敗時の部分出力を捨てる挙動は[障害注入テスト](review:dev/tests/test_walkthrough.py#L213)で確認しています。"
-    },
-    {
-      "id": "py-scan-completeness",
-      "file": "skills/walkthrough-review/scripts/walkthrough.py",
-      "start_line": 158,
-      "end_line": 221,
-      "side": "new",
-      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
-      "title": "走査を省略せず、完成した一覧に表示用の判定を足す",
-      "body": "既存の `scan_project` は隠しファイルや `.git` も名前で省かず、ディレクトリをたどって一覧を作ります。リンクは追跡せず、走査不能な項目も状態と理由を残します。今回の追加点は末尾の219行で、全件を列挙した後にGitの無視判定を付けることです。\n\n対象外一覧から見えなくなった項目も `inventory` に残るので、「すべて」の表示や自己確認資料で全体を追えます。また、[対象リストの取り込み](review:skills/walkthrough-review/scripts/walkthrough.py#L438)は `git_ignored` で拒否していません。AIが明示的に選んだ無視対象ファイルも、通常の本文検証を通ればレビューできます。\n\nこの関数は `scan` と `build` の両方から使われます。保存済みデータへ解説だけを結合する `merge` は元プロジェクトを再走査しないため、新しい無視設定を取り込むには再ビルドが必要です。全走査を維持する既存保証は[対象外・隠し項目の保持テスト](review:dev/tests/test_walkthrough.py#L142)、明示選択を維持する追加保証は[無視対象の取込テスト](review:dev/tests/test_walkthrough.py#L202)で読めます。"
-    },
-    {
-      "id": "py-deleted-ignore",
-      "file": "skills/walkthrough-review/scripts/walkthrough.py",
-      "start_line": 407,
-      "end_line": 436,
-      "side": "new",
-      "code_hash": "72c8292402844d81c7229d7f4ed063657976ee6cf8b5ef53259db4d20c42e1e1",
-      "title": "走査では見つからない削除済みファイルも判定する",
-      "body": "差分レビューでは、現在のディスクにない削除済みファイルをパッチから `inventory` へ補います。この追加は全件走査の後なので、走査末尾のGit判定だけでは `git_ignored` が付きません。今回435〜436行で、パッチの取り込みが終わってから `status == \"deleted\"` の項目だけをまとめて判定するようにしました。\n\n判定対象は削除ファイルに限るため、通常ファイルの一覧をもう一度Gitへ渡す必要はありません。基準は過去の `.gitignore` ではなく、変更後プロジェクトの現在の無視規則とGitの追跡状態です。旧コード本文は引き続きパッチから復元し、無視判定を本文の取得・差分照合の代わりには使いません。\n\n削除済みパスが現在の無視規則に該当するケースは[追加テストの末尾](review:dev/tests/test_walkthrough.py#L208)で確認しています。"
-    },
-    {
-      "id": "test-ignore-rules",
-      "file": "dev/tests/test_walkthrough.py",
-      "start_line": 177,
-      "end_line": 201,
-      "side": "new",
-      "code_hash": "d37367de06d856afa7b1a1f21675fe2ce62aa0bc9d8400949f57bacc5a828e68",
-      "title": "複数のGit規則を実リポジトリで確かめる",
-      "body": "今回追加したテストは、専用の一時プロジェクトを `git init` し、根元と `src` の二つの `.gitignore` を作ります。`*.log` と否定規則、ディレクトリ全体、ルート限定パターン、子フォルダ側の規則を同時に用意し、無視される項目と残る項目を比較します。日本語と空白を含むファイル名も判定対象です。\n\n`tracked.log` は無視パターンに一致しても `git add -f` で追跡対象にし、`git_ignored == false` を確認します。単純な拡張子判定や独自のglob実装で追跡済みファイルまで隠す退行を検出できます。さらに `src` 自体を走査ルートにして、Gitの親規則と相対パスの扱いが崩れないことも確認します。\n\n実Gitがない環境ではこのケースを明示的にskipします。Gitのない環境で生成を続行できることは、[別の障害注入テスト](review:dev/tests/test_walkthrough.py#L213)が担当します。"
-    },
-    {
-      "id": "test-ignore-boundaries",
-      "file": "dev/tests/test_walkthrough.py",
-      "start_line": 202,
-      "end_line": 211,
-      "side": "new",
-      "code_hash": "d37367de06d856afa7b1a1f21675fe2ce62aa0bc9d8400949f57bacc5a828e68",
-      "title": "表示の除外が本文の選択や削除差分を壊さないことを確認する",
-      "body": "前半はGitの無視対象である日本語名の `.log` をレビュー対象として明示し、本文が丸ごと取り込まれ、一覧上では `selected` と `git_ignored` が両方とも `true` になることを確認します。この二つの値は互いを打ち消す分類ではありません。\n\n後半は現在存在しない `deleted.log` の削除パッチを渡し、補完された一覧項目にも `git_ignored` が付くことを確認します。通常の走査だけを修正して差分レビュー側の補完を忘れた場合を検出するためのケースです。本文選択の保証と、削除ファイルの表示判定の保証を、実際の `create_review` の結果で確かめています。"
-    },
-    {
-      "id": "test-ignore-fallback",
-      "file": "dev/tests/test_walkthrough.py",
-      "start_line": 213,
-      "end_line": 227,
-      "side": "new",
-      "code_hash": "d37367de06d856afa7b1a1f21675fe2ce62aa0bc9d8400949f57bacc5a828e68",
-      "title": "Git判定の障害がレビュー全体を止めないことを検証する",
-      "body": "新しい外部プロセス呼び出しに対し、実行ファイル不在、タイムアウト、Gitがエラー終了する場合の三つを差し込みます。OSやユーザーのGit設定を壊す代わりに、`subprocess.run` の応答だけを置き換えて再現しています。\n\nどのケースでも既存の5項目が一覧に残り、選択したコード全文が取り込まれ、全項目の `git_ignored` が `false` のままであることを確認します。終了値128のケースは意図的に `.env` という部分出力も返すため、失敗したGitの出力を採用して項目を隠してしまう実装も検出できます。\n\nここで保証するのは生成の継続と項目保持です。Gitが使えないときに `.gitignore` の規則を別実装で再現する、という保証ではありません。"
-    },
-    {
-      "id": "docs-readme-layout",
+      "id": "integration-dev-browser",
       "file": "dev/README.md",
       "start_line": 66,
-      "end_line": 69,
-      "side": "new",
-      "code_hash": "665a27599c796bac718bcea2cfcaa1981c4c44edb34054f057100d8adf1778cc",
-      "title": "見た目の変更を、実ブラウザーで確認する項目に落とす",
-      "body": "今回の変更は、概要やツリーが単に表示されることから、**概要本文がすぐ読める配置**と**最初にレビュー対象が見える状態**まで受入条件を具体化しています。全走査結果は「すべて」に残し、右ペインと「対象外」フィルタにだけ省略規則を適用するため、表示を減らしても収集漏れと混同しません。対象外案内の文言もここで固定し、今後のUI調整で戻らないようにします。[保存データと表示範囲の区別](review:dev/docs/data-format.md#L36)と合わせて確認します。"
+      "end_line": 110,
+      "title": "fixtureの生成成功と画面の合格を区別する",
+      "body": "受入用ツールが全体・差分・図・警告等の画面を用意し、その後に人間またはブラウザー操作で表示と操作を検証します。生成コマンドだけで「画面のテストが通った」とは判断しません。\n\n直接HTMLを開けない操作環境ではループバック限定HTTPを利用できます。HTTPでの成功と、通信を切ってfile://から直接開く確認は別々に記録する方針です。\n",
+      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "side": "new"
     },
     {
-      "id": "docs-readme-interactions",
+      "id": "integration-dev-packaging",
       "file": "dev/README.md",
-      "start_line": 73,
-      "end_line": 81,
-      "side": "new",
-      "code_hash": "665a27599c796bac718bcea2cfcaa1981c4c44edb34054f057100d8adf1778cc",
-      "title": "カード全体のクリックと、内側の操作を両立させる受入確認",
-      "body": "カードをクリックできるようにすると、本文の参照リンクや質問・図拡大のクリックまで親が拾う可能性があります。そこで本文・余白からの行ジャンプを確認するだけでなく、子の操作、文章の選択、行番号ボタンによるキーボード操作を保つことも明記しました。正常な照合表示を消しても、不一致・未記録・消失した行の警告は確認対象です。既存の双方向スクロール、狭い画面、同梱素材だけでの閲覧も同じチェックリストに残るため、密度の改善と機能の維持を一緒に検証できます。"
+      "start_line": 145,
+      "end_line": 175,
+      "title": "利用者向け配布と開発用ソース配布を分ける",
+      "body": "通常の利用者へ渡すのは、同じバイト列の.skillまたはスキルZIPです。開発用ZIPにはテスト・資料・再梱包用ツールも入り、利用時には不要です。\n\n[梱包処理](review:dev/tools/package_skill.py#L234)は入力・アーカイブの整合を検査しますが、ユニットテストや実ブラウザー操作は実行しません。ライブラリの再取得も通常のレビュー生成では不要です。\n",
+      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "side": "new"
     },
     {
-      "id": "docs-requirements-density",
+      "id": "integration-diff-wrapper",
+      "file": "dev/diff_parser.py",
+      "start_line": 1,
+      "end_line": 13,
+      "title": "開発用importを配布実装へ統一する",
+      "body": "呼び出し元の作業ディレクトリではなく、このファイルの配置から配布スキル内のパーサーを見つけ、モジュールとして読み込みます。最後にsys.modulesの参照を実体へ差し替えるため、開発側のimportも同じ実装を参照します。\n\n差分処理をここへ複製せず、[配布用パーサー](review:skills/walkthrough-review/scripts/diff_parser.py#L1)の一か所だけで保守する入口です。\n",
+      "code_hash": "6e451e9059f7b83889ad656ab2954b7a5b4c923b2debcb176039bf14b3f9ce7c",
+      "side": "new"
+    },
+    {
+      "id": "integration-requirements-pipeline",
+      "file": "dev/docs/DRECTION.md",
+      "start_line": 7,
+      "end_line": 29,
+      "title": "資料作成を最後までAIが引き受けるという要求",
+      "body": "ユーザーの通常操作を依頼と閲覧に絞り、対象の一覧化、実コードの取り込み、解説、自己確認、修正、提示までをAI側の仕事として定めています。Pythonの生成成功だけでは完了せず、説明と参照の対応まで確認する要求です。\n\n現在の実行手順は[SKILL.md](review:skills/walkthrough-review/SKILL.md#L29)、入力と照合は[解説形式](review:skills/walkthrough-review/references/input-format.md#L25)へ具体化されています。ここは原要求の記録として読みます。\n",
+      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
+      "side": "new"
+    },
+    {
+      "id": "integration-requirements-diagrams",
+      "file": "dev/docs/DRECTION.md",
+      "start_line": 34,
+      "end_line": 46,
+      "title": "図と本文以外の差分も説明の根拠に残す",
+      "body": "図は装飾ではなく、分岐や呼び出し関係が理解しやすくなる箇所へ任意に添えるものです。タイトル・説明・SVGをコードの行とHashへ対応させ、再生成や質問でも保持することを求めています。\n\n権限変更・名前変更・コピーは、追加削除行がなくても意味のある変更です。本文のHashとは別の付加情報として扱い、説明・画面・質問へ残す要求になっています。\n",
+      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
+      "side": "new"
+    },
+    {
+      "id": "integration-requirements-reading-ui",
       "file": "dev/docs/DRECTION.md",
       "start_line": 77,
-      "end_line": 87,
-      "side": "new",
-      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
-      "title": "コードと解説に表示領域を戻す、今回のUI要求",
-      "body": "大きな全体ヘッダ、定型の概要メッセージ、正常時の照合表示を減らし、レビュー作業そのものを画面の中心にする要求を追加しました。操作面ではカード全体を行ジャンプの入口にし、「対象」を初期選択にします。一方でファイル一覧のモバイル開閉、カード内の質問・リンク・図拡大、キーボード操作、要確認の警告は維持します。削除する情報と残す機能を一緒に記録することで、単なる縮小で必要な操作まで失うことを防ぐ設計条件になっています。"
-    },
-    {
-      "id": "docs-requirements-exclusions",
-      "file": "dev/docs/DRECTION.md",
-      "start_line": 88,
       "end_line": 89,
-      "side": "new",
+      "title": "コードを読む面積と、読み進める操作を優先する",
+      "body": "固定ヘッダや正常時の照合表示を減らし、概要本文・コード・解説を主役にするUI方針です。カード全体から行へ移動しつつ、質問、リンク、図拡大、文章選択は独立した操作として残します。\n\n対象外一覧の表示を絞っても全走査結果は保持します。「すべて」で追えることと、通常の読み進め方で管理用ファイルが邪魔にならないことを両立させる要求です。\n",
       "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
-      "title": "対象外一覧の省略と、全ファイル走査の保証を分ける",
-      "body": "追加の絞り込みは、`.git`、Gitの無視対象、ドットフォルダ配下を**対象外一覧から省く**要求です。走査そのものを打ち切る要求ではなく、「すべて」には全項目を残します。右ペインと「対象外」フィルタで同じ条件を使うため、両方の件数と内容が一致します。また表示と操作は実ブラウザーで確認し、ローカルHTMLを直接開けない環境ではローカルサーバーによる確認を認めています。[開発用の確認項目](review:dev/README.md#L66)へつながる要求です。"
+      "side": "new"
     },
     {
-      "id": "docs-data-git-ignore",
+      "id": "integration-schema-contract",
       "file": "dev/docs/data-format.md",
-      "start_line": 36,
-      "end_line": 44,
-      "side": "new",
-      "code_hash": "0da7ee7f5d7bb3dcef32a10d1a8c8673ee8c71fd1fd9bcc6e9171462f7c21b05",
-      "title": "git_ignoredは対象選定ではなく、対象外一覧を整える補助情報",
-      "body": "`selected` は本文の取込対象、追加された `git_ignored` は生成時点でのGit無視判定であり、役割が異なります。Gitが利用できない、リポジトリでない、判定が失敗した場合は `false` にして生成を続け、旧データの未記録も画面では同じ扱いにします。このためGitを必須依存にせず、追跡済みファイルも誤って無視対象にしません。省略は対象外一覧とそのフィルタに限られ、明示的に選んだ無視対象ファイルの本文取込や「すべて」の表示は維持されます。なお `false` は判定不能時にも使うため、必ずしもGitが明示的に無視対象外と回答した証拠ではありません。"
+      "start_line": 16,
+      "end_line": 81,
+      "title": "走査結果と取り込んだ本文を別々に保存する",
+      "body": "inventoryは対象外を含む走査結果、filesは選択した本文と解説です。この分離により、本文を含めないファイルも対象外として把握できます。full/diffというモードはパッチ指定の有無で決まり、空パッチもdiffです。\n\n元bytesのsha256と、正規化した旧新コードのcode_hashesは用途が異なります。差分の権限・名前変更等も本文Hashとは別に保持し、Hash一致だけで変更全体の確認が完了したとは扱いません。\n",
+      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "side": "new"
     },
     {
-      "id": "docs-skill-optional-git",
-      "file": "skills/walkthrough-review/SKILL.md",
-      "start_line": 10,
-      "end_line": 12,
+      "id": "integration-block-contract",
+      "file": "dev/docs/data-format.md",
+      "start_line": 83,
+      "end_line": 119,
+      "title": "連続行は本文ブロックへまとめ、行番号を復元する",
+      "body": "kindと旧新の開始番号、LFを含むtextで連続区間を表現します。全体レビューでは通常、一つの非空ファイルが一つのcontextブロックになり、行ごとの同じキーを保存しません。\n\n復元は各版に存在するブロックを順につなぎます。先頭BOMの移動で旧新の表示が異なる例外だけold_textを持ち、末尾LFの有無も保持します。保存データの冗長性を減らしながら、旧新本文のHashを再現する契約です。\n",
+      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "side": "new"
+    },
+    {
+      "id": "integration-viewer-contract",
+      "file": "dev/docs/data-format.md",
+      "start_line": 121,
+      "end_line": 133,
+      "title": "全文を保存し、画面には必要な行だけを置く",
+      "body": "選択ファイルの行モデルを展開し、DOMは画面付近と前後20行に限定します。画面外の行も行番号と行高で位置を求めるので、遠い行へのリンクや解説との連動を維持できます。\n\n構文強調は旧新全文をWorkerで解析し、結果を2ファイル・800万UTF-16コード単位まで再利用します。Workerを使えなくても本文は表示します。ブラウザー標準のページ内検索・選択はDOMにある範囲が対象で、全文は保存JSONや確認資料でも読めます。\n",
+      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "side": "new"
+    },
+    {
+      "id": "integration-artifact-contract",
+      "file": "dev/docs/data-format.md",
+      "start_line": 163,
+      "end_line": 180,
+      "title": "同じデータからHTMLと自己確認資料を作る",
+      "body": "review.json、HTML内のJSON、自己確認Markdownを同じレビュー辞書から生成します。埋込みJSONは字下げを省略し、scriptの終端になり得る文字をエスケープします。テンプレートのマーカーと同じ文字列がコードにあっても、本文は置換しません。\n\n未解説範囲は版別の区間を統合してから行と照合し、説明の関連付けの有無を示します。全行へ機械的に説明を付ける指示ではなく、説明の意味が正しいことを証明するものでもありません。\n",
+      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "side": "new"
+    },
+    {
+      "id": "integration-parser-api-contract",
+      "file": "dev/docs/data-format.md",
+      "start_line": 195,
+      "end_line": 222,
+      "title": "反復APIは最後まで消費して初めて検査が完了する",
+      "body": "iter_patchはファイル単位、iter_build_rowsは行単位で結果を返します。対象外の本文やhunkを全件分保持せず、各ファイルの検証後に解放する構成です。リストで扱いたい呼び出し元にはparse_patch/build_rowsもあります。\n\n途中で反復を止めると、後半の不正はまだ見つかっていない可能性があります。生成側は対象外も含めて最後まで消費します。削除行はパッチから復元するため、変更前の実ファイルと照合した結果ではないという限界も明記されています。\n",
+      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "side": "new"
+    },
+    {
+      "id": "integration-authoring-contract",
+      "file": "dev/docs/data-format.md",
+      "start_line": 224,
+      "end_line": 255,
+      "title": "カードの確認記録を固定コードと現在内容へ結び付ける",
+      "body": "固定スナップショット、担当別カード、概要、確認記録を分けて保存します。固定IDにはコード・対象順・差分条件を含め、概要の編集や同一コードの再buildではストアを無効にしません。\n\nカード変更後は確認記録を古いものとし、全対象の現行記録とカード検証がそろってからexportします。元プロジェクトの監視ではないため最終buildは別途必要です。OSロックと固有一時ファイルで並行保存を保護しますが、意味の正しさはAIの自己確認に依存します。\n\nカードIDは大小文字だけの違いも重複として拒否し、担当名も既存の表記を厳密に合わせます。同じHashの大文字表記は照合でき、内容が変わらない更新では元の作成時表記を保持します。\n",
+      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "side": "new"
+    },
+    {
+      "id": "ui-logo",
+      "file": "dev/img/walkthrough-review-logo.svg",
       "side": "new",
-      "code_hash": "4906b52eecb5eab833817d4fbfeb961d3bffc7b00772e0d46b71721966e3c960",
-      "title": "Gitの追加利用を案内し、基本の生成条件を維持する",
-      "body": "以前はGitの用途を差分の自動取得だけと説明していましたが、今回から利用可能な場合は無視設定も読んで対象外一覧を絞ります。これは表示を補助する任意の処理で、Python 3.9以上と標準ライブラリだけで通常のレビュー生成を進める構成は維持します。スキル内のCLIを絶対パスで呼び出す方針も変わりません。Git不在時や判定失敗時に一覧を保持する扱いは、[データ形式の規定](review:dev/docs/data-format.md#L39)に対応します。"
+      "start_line": 1,
+      "end_line": 12,
+      "title": "コードを読む道具を示すロゴ",
+      "body": "512×512の正方形ロゴです。背景・コード括弧・スラッシュ・小さなアクセントをSVGの基本図形だけで描き、外部画像や実行処理を持ちません。レビュー本文の表示ロジックとは独立した開発用の紹介素材です。\n",
+      "code_hash": "7fb8b21ae781aac4271fc950e1a0f3fc58cdaa7db70e51d2d388fe6b6aad331c"
+    },
+    {
+      "id": "ui-social",
+      "file": "dev/img/walkthrough-review-social.svg",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 127,
+      "title": "全文・差分・解説を伝える紹介画像",
+      "body": "1280×640の紹介画像をベクター図形と文字で構成しています。左に名称と説明、右にファイル一覧・差分コード・解説カードを模した画面を置き、「コードと理由を並べて読む」という用途を伝えます。\n\nここに描いたコードやボタンは静的な絵であり、レビューの内容や操作に連動しません。Inter Displayや日本語フォントは名前で指定されているため、実際の字形・文字幅は閲覧環境のフォントに依存します。\n",
+      "code_hash": "d8414fb8882d2fe14f29ca7a0ca6997e65a1253ca472ca386db565d86de914bd"
+    },
+    {
+      "id": "integration-windows-package-entry",
+      "file": "dev/package.bat",
+      "start_line": 7,
+      "end_line": 37,
+      "title": "利用可能なPythonを確認し、失敗した段階で止める",
+      "body": "py -3、次にPATH上のpythonを調べ、3.9以上の実行環境を採用します。パッケージやPythonの自動インストールは行いません。スクリプトの場所を基準に引用したパスで呼び出し、空白や日本語を含む配置に対応します。\n\nスキル梱包が失敗したら開発用ZIPへ進まず、開発用ZIPの終了値も呼び出し元へ返します。遅延展開を無効にすることで、パスの感嘆符を変数展開として失うことを防いでいます。\n",
+      "code_hash": "417586c3bbd7dab6483286bf4bc81ce5619628177bbb7e1e9a162229c5ddf37e",
+      "side": "new"
+    },
+    {
+      "id": "tests-evals-default-diff",
+      "file": "dev/tests/evals.json",
+      "side": "new",
+      "start_line": 4,
+      "end_line": 45,
+      "title": "呼び出し方から完成資料までを評価するシナリオ",
+      "body": "これはunittestの実行コードではなく、AIがスキルを実行した結果を評価するプロンプトと判定項目です。ケース1は引数なしの全体レビュー、ケース2は[固定パッチ](review:dev/tests/fixtures/diff.patch#L1)からの削除復元、ケース3はGitからの差分取得を扱います。\n\n追加のJSONやCLIを人間へ要求しないこと、全一覧・対象外・旧新のHashを残すこと、元コードやGit indexを変更しないことが評価対象です。宣言されたassertions自体が自動実行される保証は、このファイルだけからは得られません。\n",
+      "code_hash": "0fdb2f06273249311698c33af57b321894dcd912687b57187e3763f26e98686f"
+    },
+    {
+      "id": "tests-evals-diagram-metadata",
+      "file": "dev/tests/evals.json",
+      "side": "new",
+      "start_line": 46,
+      "end_line": 76,
+      "title": "図と本文以外の変更を人間が確認する",
+      "body": "ケース4はcheckoutから合計計算へ渡る流れに図が役立つかをAIに判断させます。SVGの有無だけでなく、ノードと矢印の実装対応、説明・Hash・質問文への保持、表示確認できる場合の文字切れとスクロールも評価します。\n\nケース5は権限・名前変更・コピーを本文と別の情報として説明する要求です。本文Hashが同じでも変更があり得るため、コード本文だけを読んで「変更なし」と結論付けないことを確かめます。[SVGの自動検証](review:dev/tests/test_diagrams.py#L117)に加え、人間向けの内容確認を求めるシナリオです。\n",
+      "code_hash": "0fdb2f06273249311698c33af57b321894dcd912687b57187e3763f26e98686f"
+    },
+    {
+      "id": "tests-evals-card-workflow",
+      "file": "dev/tests/evals.json",
+      "side": "new",
+      "start_line": 77,
+      "end_line": 93,
+      "title": "分担と単独作業に共通の完成条件",
+      "body": "ケース6はカードを1件ずつ保存し、readのnextを最後まで追い、担当別の確認記録を親が統合する作業を評価します。サブエージェントが使えない環境でも、単独で同じ確認範囲を終えることが期待値です。\n\n[カード保存の自動テスト](review:dev/tests/test_comment_cards.py#L67)はツールの保持・拒否動作を確かめますが、ここではAIが全文と解説を実際に読み、最後の再buildで変化を見直す行動まで求めます。確認記録を付けることと解説内容が正しいことは別に評価します。\n",
+      "code_hash": "0fdb2f06273249311698c33af57b321894dcd912687b57187e3763f26e98686f"
+    },
+    {
+      "id": "tests-fixture-diff-comments",
+      "file": "dev/tests/fixtures/comments-diff.json",
+      "side": "new",
+      "start_line": 2,
+      "end_line": 43,
+      "title": "差分レビューに新旧4件の解説を流し込む",
+      "body": "[差分用対象](review:dev/tests/fixtures/targets-diff.json#L3)に対応する既成入力です。変更後main.pyを2件、未変更pricing.pyを1件、削除legacy.pyをold側の1件で説明します。Hashも版ごとに固定され、復元した旧コードを新コードと取り違えずマージできるかを試します。\n\nJSON本文中の内部リンクはfixture内projectをルートに生成した資料の参照です。[展開した配布物のテスト](review:dev/tests/test_package_release.py#L211)はこの入力をmergeし、全コメントがverifiedになることを確認します。解説の意味や削除判断の妥当性を自動評価するものではありません。\n",
+      "code_hash": "a8b99a899788d5c04c350ae47c03afee17fd9706963bff4a21d2df5c1e499292"
+    },
+    {
+      "id": "tests-fixture-full-comments",
+      "file": "dev/tests/fixtures/comments.json",
+      "side": "new",
+      "start_line": 2,
+      "end_line": 43,
+      "title": "全体レビューの既成解説と内部リンクの基準",
+      "body": "[通常の対象指定](review:dev/tests/fixtures/targets.json#L3)で取り込むmain.pyとpricing.pyへ、割引入力・0下限・実行例・価格検証の4カードを結びます。業務ロジックを説明責務ごとに分け、作成時Hashと内部リンクを含めた正常なmerge入力になります。\n\nconfig.jsonとnotes.txtは一覧に残しつつ本文対象から外すという対象選択の見本です。JSON内のsrc/main.py等はfixtureプロジェクト相対です。固定Hashは[変更後ソース](review:dev/tests/fixtures/project/src/main.py#L4)との一致を確認する値で、解説の正しさを証明する値ではありません。\n",
+      "code_hash": "89f7046bd5670fd2c923c9dab50a60970590630006068434d2e3c1acf63282f8"
+    },
+    {
+      "id": "tests-fixture-discount-patch",
+      "file": "dev/tests/fixtures/diff.patch",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 20,
+      "title": "割引追加を前後全文へ対応させる差分",
+      "body": "[変更前main.py](review:dev/tests/fixtures/project-before/src/main.py#L4)の合計返却を、[変更後main.py](review:dev/tests/fixtures/project/src/main.py#L4)の割引検証と0下限へ置き換えます。実行例も200から170へ変わります。\n\n旧9行・新13行のハンクは空行とimportも含み、各版の行番号と全文を再構成する固定入力になります。パッチを適用するテストではなく、変更後プロジェクトと整合するパッチを資料へ読み込むための入力です。\n",
+      "code_hash": "cbce8600b5d3ccf7889a1d2d2e48e016340722445fb1d3bb24377659e69cfb8a"
+    },
+    {
+      "id": "tests-fixture-excluded-deleted-patch",
+      "file": "dev/tests/fixtures/diff.patch",
+      "side": "new",
+      "start_line": 21,
+      "end_line": 37,
+      "title": "対象外の変更と現在存在しない削除を同居させる",
+      "body": "config.jsonのフラグ変更は[差分用対象指定](review:dev/tests/fixtures/targets-diff.json#L3)に含めないため、パッチにはあるが本文対象外という状態を作ります。legacy.pyは現在のprojectに存在せず、削除ハンクの3行から旧全文を復元します。\n\n選択ファイルだけを一覧化して対象外変更を失うことや、現在ファイルがない削除を落とすことを検出する入力です。legacy.pyの元本文は[変更前fixture](review:dev/tests/fixtures/project-before/legacy.py#L1)にも保持されています。\n",
+      "code_hash": "cbce8600b5d3ccf7889a1d2d2e48e016340722445fb1d3bb24377659e69cfb8a"
+    },
+    {
+      "id": "tests-fixture-before-config",
+      "file": "dev/tests/fixtures/project-before/config.json",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 4,
+      "title": "対象外でも変更を一覧へ残すための旧設定",
+      "body": "割引フラグがfalseの変更前設定です。[変更後設定](review:dev/tests/fixtures/project/config.json#L1)ではtrueとなり、[パッチ](review:dev/tests/fixtures/diff.patch#L21)にも差が記録されます。通常・差分の対象JSONからは外され、変更のある対象外ファイルを一覧に残す例として使います。\n\nサンプルcheckoutはこのJSONを読みません。フラグが計算動作を切り替えることまでは表していません。\n",
+      "code_hash": "ddfb56bb143822de89f2e962c02bde1cdcc0fb97591129f26f1949e8d0716582"
+    },
+    {
+      "id": "tests-fixture-before-legacy",
+      "file": "dev/tests/fixtures/project-before/legacy.py",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 3,
+      "title": "削除復元の期待本文となる旧実装",
+      "body": "価格をそのままsumへ渡す旧実装の3行です。[削除パッチ](review:dev/tests/fixtures/diff.patch#L30)はこの全文を削除行として持ち、変更後projectではファイル自体がなくなります。\n\n現在のpricing.pyと違い負数の検証はありません。削除済みコードのold側表示・Hash照合に使う固定入力で、業務コードとして実行し旧実装の正しさを確認する構成ではありません。\n",
+      "code_hash": "d682f2f31d473b824a7a33c9b63d47750a392455e82c116b258f3142bd9fa5ec"
+    },
+    {
+      "id": "tests-fixture-before-notes",
+      "file": "dev/tests/fixtures/project-before/notes.txt",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 2,
+      "title": "対象外一覧の可視性を保つための注記",
+      "body": "レビュー対象から意図的に外した通常テキストで、変更後fixtureにも[同じ内容](review:dev/tests/fixtures/project/notes.txt#L1)が置かれます。選択対象に加えプロジェクト全体の存在一覧を保持する要件を、小さな入力で表します。\n\n計算処理から呼ばれるファイルではなく、本文対象外を「未存在」や「確認済み」と混同しないためのfixtureです。\n\n対象外という位置付けは、このfixtureを入力とするサンプル資料についての説明です。本ツール全体を説明する現在の資料では、fixture自身も本文対象に含めています。\n",
+      "code_hash": "f53bf10e136185d8b86a05094ba188db1807540b4d60f3091bb4d29007cb0449"
+    },
+    {
+      "id": "tests-fixture-before-main",
+      "file": "dev/tests/fixtures/project-before/src/main.py",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 9,
+      "title": "割引導入前の呼び出しを保持する",
+      "body": "旧checkoutは[旧pricing.py](review:dev/tests/fixtures/project-before/src/pricing.py#L1)へ価格合計を任せ、その値をそのまま返します。直接実行すると120と80の合計200を表示します。\n\n[変更後](review:dev/tests/fixtures/project/src/main.py#L4)では同じ呼び出しに割引入力と0下限が追加されます。前後fixtureとパッチの対応を読めるようにした資料用サンプルで、割引や境界条件の自動assertはここにはありません。\n",
+      "code_hash": "0d089d2ba3f096cea430a4ea0673052f5273073f154da4880502bdf248959a66"
+    },
+    {
+      "id": "tests-fixture-before-pricing",
+      "file": "dev/tests/fixtures/project-before/src/pricing.py",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 5,
+      "title": "変更しない依存先の基準コード",
+      "body": "負の価格が一つでもあればValueError、そうでなければ合計を返します。[変更後pricing.py](review:dev/tests/fixtures/project/src/pricing.py#L1)も同じ本文のため、差分に出ない呼び出し先を対象に含めて全文表示する例になります。\n\n入力は価格リストを想定した小さなサンプルです。通貨・丸め・任意型の扱いは定義せず、計算結果のテストではなくレビュー資料生成のfixtureとして使います。\n",
+      "code_hash": "611ccf0aa6be92fcb87f775c21d64cd50466f8ac330b894dcd45f91285e03f18"
+    },
+    {
+      "id": "tests-fixture-after-config",
+      "file": "dev/tests/fixtures/project/config.json",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 4,
+      "title": "差分のある対象外設定を作る",
+      "body": "[変更前](review:dev/tests/fixtures/project-before/config.json#L3)からdiscount_enabledだけがtrueへ変わっています。パッチには含まれる一方、通常・差分の対象JSONには含めないため、本文を取り込まず変更状態を一覧に残せるかを試す入力です。\n\ncheckoutはこの設定ファイルを参照しないため、trueが割引機能を有効化する実行経路はありません。\n",
+      "code_hash": "63a465415d62ae5c88f66408ae6808e27463e26a7bd4e45f6b08de3d0d69898a"
+    },
+    {
+      "id": "tests-fixture-after-notes",
+      "file": "dev/tests/fixtures/project/notes.txt",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 2,
+      "title": "未選択の通常ファイルも一覧から落とさない",
+      "body": "全体・差分の両モードで対象外として残すためのテキストfixtureです。[targets.json](review:dev/tests/fixtures/targets.json#L3)にも[targets-diff.json](review:dev/tests/fixtures/targets-diff.json#L3)にも含めず、本文選択と全ファイル走査が別の責務であることを示します。\n\n変更前にも同内容があり、業務処理からの呼び出しはありません。\n\nここでいう対象外はサンプル生成時の指定です。現在のツール全体レビューでは、このfixtureも説明対象として取り込んでいます。\n",
+      "code_hash": "f53bf10e136185d8b86a05094ba188db1807540b4d60f3091bb4d29007cb0449"
+    },
+    {
+      "id": "tests-fixture-after-main",
+      "file": "dev/tests/fixtures/project/src/main.py",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 13,
+      "title": "解説・Hash・図の入力になる割引の入口",
+      "body": "checkoutは負の割引を先に拒否し、[pricing.py](review:dev/tests/fixtures/project/src/pricing.py#L1)に価格検証と合計を任せ、固定額を引いた結果を0以上に制限します。省略した割引は0、直接実行例の結果は170です。\n\n[既成解説](review:dev/tests/fixtures/comments.json#L4)と[差分パッチ](review:dev/tests/fixtures/diff.patch#L1)の行・Hash照合に使う中心fixtureです。サンプル業務ロジックをテストするassertはここにはなく、型や通貨・丸めなどの仕様まで保証するものではありません。\n",
+      "code_hash": "2025a627017fdf2982cc2b77d5372e3e90a3945962e6e74c36e0240f3001a793"
+    },
+    {
+      "id": "tests-fixture-after-pricing",
+      "file": "dev/tests/fixtures/project/src/pricing.py",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 5,
+      "title": "価格の合計を入口から分離する未変更fixture",
+      "body": "負の価格の検証とsumをまとめ、[checkout](review:dev/tests/fixtures/project/src/main.py#L8)から呼ばれます。割引は知らず小計だけを返すという責務分離を解説するための5行です。\n\n前後fixtureで本文が同じでパッチにも登場しませんが、差分用対象JSONには含まれます。変更行だけに表示を絞らず、関連する未変更ファイルの全文と解説を保持する例になります。\n",
+      "code_hash": "611ccf0aa6be92fcb87f775c21d64cd50466f8ac330b894dcd45f91285e03f18"
+    },
+    {
+      "id": "tests-fixture-diff-targets",
+      "file": "dev/tests/fixtures/targets-diff.json",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 8,
+      "title": "変更・未変更・削除を同じ資料へ選択する",
+      "body": "変更後main.py、未変更pricing.py、削除済みlegacy.pyを対象に指定します。legacy.pyは現在のprojectにはなく、[パッチ](review:dev/tests/fixtures/diff.patch#L30)から復元する必要があります。\n\nconfig.jsonは変更されていても対象外、notes.txtも対象外です。対象指定はパッチに現れる全ファイルの列挙ではなく、人間へ全文と解説を渡す範囲の選択であることを表します。\n",
+      "code_hash": "2c39e2cd1bbe827cd8e91594b1f502a3de2ffdee7cb5bb0ee3faf6c834d86033"
+    },
+    {
+      "id": "tests-fixture-full-targets",
+      "file": "dev/tests/fixtures/targets.json",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 7,
+      "title": "通常レビューの本文選択を2ファイルに固定する",
+      "body": "main.pyとpricing.pyだけを指定する、[全体用解説](review:dev/tests/fixtures/comments.json#L3)に対応した対象入力です。config.jsonとnotes.txtは一覧には残る一方、コード本文・解説からは外れます。\n\nパスはfixtureのprojectルートからの相対名です。差分用指定では、ここへ削除済みlegacy.pyを追加して旧側レビューも試します。\n",
+      "code_hash": "ddb90274f3d10fe1085f50b21678eca2da908472675791329d7c46247559b491"
+    },
+    {
+      "id": "tests-browser-generated-metrics",
+      "file": "dev/tests/test_browser_acceptance.py",
+      "side": "new",
+      "start_line": 15,
+      "end_line": 89,
+      "title": "受入素材を実生成し全整数期待値を照合する",
+      "body": "prepare_browser_acceptanceのOUTPUTと所有マーカーを専用一時出力へ差し替え、実際に全受入素材を生成します。review.jsonから対象数・対象外数・解説数・Hash3状態・消失範囲・未所属・図・重なる開始行・追加削除行などを再集計し、期待値へ新しい整数項目が増えても未検証のまま通らないようにキーの欠落を検出します。各版の行数はblocksの本文と開始番号から数えます。\n\nfull・diff・unmerged・no-targets・large・long・diagrams・metadataの8ケースを照合し、5万行/2カード、空ファイルと非空ファイルを追加で確認します。clipboard-failureは元ケースの期待値とfiles全体が同じことを確認します。これは生成データの整合性の検証であり、ブラウザー表示やクリップボード失敗そのものは実行しません。[配布ZIPでの受入素材生成](review:dev/tests/test_package_release.py#L234)はHTML存在と主要値を確かめ、このテストが全整数期待値の照合を補います。\n",
+      "code_hash": "88bc1f2f3943542572d5c72e31bbb6d31bd7b49cdced07c35dd4869fa43e52aa"
+    },
+    {
+      "id": "tests-browser-hash-phases",
+      "file": "dev/tests/test_browser_acceptance.py",
+      "side": "new",
+      "start_line": 91,
+      "end_line": 109,
+      "title": "元ソース変更と再buildをHashの3段階で区別する",
+      "body": "Hash用ケースは初期生成、元ソースだけの変更、再build後の3段階を区別します。初期の件数と照合状態を確かめた後、mutate_hashで元main.pyを変え、ソースと保存スナップショットの行数の違い、verifiedの維持、HTML・review.json全bytesの不変を確認します。\n\n続くrebuild_hashで新コードを取り込み、期待するHash不一致、消失範囲や未所属などの状態を再集計します。静的HTMLやmergeだけでは元コード更新を検出しないという契約を、更新前後の保存データで検証する流れです。Hash更新の確認画面やブラウザーの再読み込み操作を自動検証するテストではありません。\n",
+      "code_hash": "88bc1f2f3943542572d5c72e31bbb6d31bd7b49cdced07c35dd4869fa43e52aa"
+    },
+    {
+      "id": "tests-cards-isolation-crud",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 22,
+      "end_line": 90,
+      "title": "一時ストアで担当ごとのカード保存契約を確かめる",
+      "body": "各ケースは3行のmain.py、helper.py、空ファイルを専用一時プロジェクトへ作り、build→ストア初期化から始めます。CLIは絶対パスを引数配列で別プロセスへ渡し、UTF-8出力と終了値を確認するため、実リポジトリのカードやHTMLへ影響しません。\n\n追加・本文更新・再開で別担当のカードが残り、HTML自体はカード操作で変わらないことを確認します。同じIDの再追加、担当違いの更新、担当接頭辞のない新規IDは拒否し、既存カードのバイト列を保つ契約です。取得時のverifiedは固定コードとの一致であり、説明内容の妥当性を保証するものではありません。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-case-collisions",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 92,
+      "end_line": 127,
+      "title": "ID・担当表記の衝突を保存前と取込前に拒否する",
+      "body": "IDの大文字・小文字だけを変えた追加、既存担当名をMAINへ変えた追加・削除、保存済みIDの表記だけを変えた削除を試し、失敗後も元カードの全bytesと件数が変わらないことを確認します。全カードを削除して担当フォルダが空になっても、そのフォルダの表記mainが残り、MAINで別担当を作れないことも確かめます。\n\n既存レビューへmain-firstとmain-FIRSTを同時に入れた場合は、initializeがストアを作る前に拒否します。入力JSON上で別IDでもWindows等の保存先で衝突する条件を扱う回帰テストで、ファイルシステムの全大文字小文字規則やUnicode正規化を網羅するものではありません。[保存・更新の通常契約](review:dev/tests/test_comment_cards.py#L67)に、消失を防ぐケースを加えています。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-uppercase-hash",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 129,
+      "end_line": 144,
+      "title": "既存の大文字Hashを保持して題名だけを更新する",
+      "body": "作成時Hashを大文字にした既存コメントをmergeし、verifiedであることを確認してからストアへ取り込みます。その後、再読を追認するconfirm-codeや本文の再指定を付けず、existing担当で題名だけを更新します。題名だけが変わり、本文と記録済みの大文字Hashが保たれ、照合もverifiedのままであることを確認します。\n\n比較時の大小文字の扱いと、記録値の表記を保存する扱いを分ける回帰テストです。実コードが変わったときの再確認免除ではなく、その場合は[本文付き再確認のテスト](review:dev/tests/test_comment_cards.py#L232)が別に失敗条件を確かめます。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-input-cli",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 146,
+      "end_line": 166,
+      "title": "不正入力拒否と小さいCLI応答を分けて確認する",
+      "body": "範囲外行、不在ファイルへの内部リンク、不正side、手入力code_hash、scriptを含むSVGを個別に追加して、すべて拒否されカードが0件のままであることを確認します。\n\n正常経路では本文Markdown、SVG、図の説明を別々のUTF-8ファイルとしてCLIへ渡し、保存結果の標準出力が200文字未満で本文を再掲しないことを確かめます。showでは図と本文が元ファイルと一致します。小さい応答と個別ファイル入力の接続を試すもので、任意の解説や図の意味の正しさは判定しません。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-source-pages",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 168,
+      "end_line": 194,
+      "title": "長大行と削除旧版を最後まで読み出す",
+      "body": "日本語の長大な1行、空行、垂直タブ、末尾改行なしを組み合わせ、nextのstart/offsetを追って返った断片を再結合します。毎ページの本文文字数が上限内で、再結合が原文と完全一致することを確認し、不正offsetは拒否させます。\n\n別ケースは削除パッチからold本文を読み、存在しないnew側は空行配列になることと、old側カードのHash照合を確認します。ページを返すAPIの欠落防止を検証するテストで、利用するAIが最後まで読んだかは[評価シナリオ](review:dev/tests/evals.json#L77)の責務です。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-export-receipts",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 196,
+      "end_line": 230,
+      "title": "概要と現在の確認記録が揃うまで集約させない",
+      "body": "未確認ファイル、概要欠落、カード変更で古くなった確認記録をそれぞれexportの失敗として分離します。有効な入力はmergeでき、Hash警告がなく、更新後のexport失敗では前回のcomments.jsonをバイト単位で保持します。\n\n非空ファイルをカードなしで確認するには理由が必要で、空ファイルは理由なしで確認できます。これは作業漏れを検出する保存契約です。reviewedはAIの確認申告であり、全文を読んだことや説明の正しさを機械的に証明する検証ではありません。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-snapshot-handoff",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 232,
+      "end_line": 299,
+      "title": "コード・対象・比較条件の変更を再確認へつなぐ",
+      "body": "コード変更後は旧ストアの更新を拒否し、新ストアへ引き継いでも作成時Hashを保ってmismatchを見せます。再確認ではconfirm-codeだけでなく新本文の説明も要求し、タイトルだけの変更でHashを追認できないことを試します。\n\n未mergeカードと概要の引継ぎ、確認記録のリセット、対象から外れたカードの保持と明示削除も確認します。対象外カードが残る間はexportを拒否します。また本文Hashを変えず権限メタデータだけを変えても旧ストアが無効になるため、本文以外の比較条件を見落とさない保証になります。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-concurrency-atomic",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 301,
+      "end_line": 332,
+      "title": "並行保存・置換失敗・削除を実ファイルで確認する",
+      "body": "4スレッドから12個の別CLIプロセスを起動し、2担当の全カードが失われず、一意なID順でexportされることを確認します。単にメモリ辞書を並行更新するテストではなく、共有ストアへの保存経路を通します。\n\nos.replaceだけを例外に差し替えた更新では、前回カードと一時ファイルの掃除を確認します。カード削除はremovedへ退避し、確認記録を古くすることも検証します。ここでの失敗注入は単一更新の置換失敗を扱うもので、OS停止や電源断など全障害の永続性を保証するものではありません。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-store-guards",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 334,
+      "end_line": 360,
+      "title": "手編集や出力先の取り違えを拒否する",
+      "body": "カードJSONを別担当ディレクトリへ複製して重複検出を確認し、固定snapshot.jsonの書き換えもread時に検出させます。プロジェクト内へのストア配置、無関係な非空ディレクトリの再利用、親参照・絶対パス・Windows予約名の担当名も拒否するケースです。\n\nexport先にストアのsnapshot.jsonを指定しても失敗させ、作業記録の正本を集約出力で潰さないことを確認します。あらゆる手編集が自動修復されるのではなく、不整合を検知して止めるという契約を試しています。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-cards-status-pagination",
+      "file": "dev/tests/test_comment_cards.py",
+      "side": "new",
+      "start_line": 362,
+      "end_line": 370,
+      "title": "一覧では本文を再掲せず必要なページだけ返す",
+      "body": "2枚のカードを作ってlimit=1のstatusを呼び、next_offsetと担当名が返り、本文bodyが含まれないことを確認します。CLIへlimit=0を渡す不正入力では終了値2と件数の説明を要求します。\n\n一覧で作業状況を絞って確認し、解説本文はshowへ分けるための契約です。全ページの表示品質や多言語端末ごとの表示は、この短いAPI/CLI検証の範囲外です。\n",
+      "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
+    },
+    {
+      "id": "tests-diagrams-storage",
+      "file": "dev/tests/test_diagrams.py",
+      "side": "new",
+      "start_line": 41,
+      "end_line": 100,
+      "title": "図をカードの一部として保存・再生成・復帰させる",
+      "body": "各ケースは1行の専用プロジェクトを作り、マーカー・グラデーション・clipPathを含む固定SVGをカードに付けます。merge後のreview.jsonに図がそのまま残り、self-reviewに説明とSVG全文が出て、HTML埋込では山括弧がエスケープされることを確認します。\n\nソース変更時はHashをmismatchにしながら図を保持し、対象外化と再選択でも図が消えないことを試します。図なし旧コメントや空配列との互換性も確認します。SVGの文字切れやノードと実装の意味対応は、この保存テストでは検証しません。\n",
+      "code_hash": "d1dd819fe4df1e6de3c24fae980cd28197af17ce1f47b8717a84a8e4d323e376"
+    },
+    {
+      "id": "tests-diagrams-validation",
+      "file": "dev/tests/test_diagrams.py",
+      "side": "new",
+      "start_line": 102,
+      "end_line": 170,
+      "title": "SVGの許可範囲と参照整合を入力時に検証する",
+      "body": "不正なdiagrams型・必須項目・余計な項目を拒否してreviewを変更しないことを確かめます。SVGではscript、foreignObject、画像・外部参照、イベント、style、アニメーション、名前空間の混在、DTDや処理命令などを個別の悪い入力で検証します。\n\nviewBoxの構成・有限値・正寸法、任意width/height、IDの重複や欠けたローカル参照も確認します。一方、既定のマーカー等を持つ固定SVGは受理します。許可リストに従う入力検査のテストで、任意SVGの美観やブラウザー差を証明するものではありません。\n",
+      "code_hash": "d1dd819fe4df1e6de3c24fae980cd28197af17ce1f47b8717a84a8e4d323e376"
+    },
+    {
+      "id": "tests-diagrams-failed-merge",
+      "file": "dev/tests/test_diagrams.py",
+      "side": "new",
+      "start_line": 172,
+      "end_line": 186,
+      "title": "不正SVGのCLI入力でも前回資料を保持する",
+      "body": "正常な図付き資料を先に書き出し、全成果物のバイト列を記録してからscript入りSVGをmergeします。CLI相当のmain呼び出しが終了値2とSVGのエラーを返し、HTML・JSON・自己確認資料・素材を含め全ファイルが変わらないことを比較します。\n\n[メモリ上の不正入力拒否](review:dev/tests/test_diagrams.py#L102)に、ディスク上の成果物保護を重ねた統合テストです。失敗時にブラウザーへ表示される文言までは確認していません。\n",
+      "code_hash": "d1dd819fe4df1e6de3c24fae980cd28197af17ce1f47b8717a84a8e4d323e376"
+    },
+    {
+      "id": "tests-diff-full-coordinates",
+      "file": "dev/tests/test_diff_parser.py",
+      "side": "new",
+      "start_line": 13,
+      "end_line": 57,
+      "title": "ハンク外も含む全文と旧新行番号を確かめる",
+      "body": "singleは1ファイル分の入力であることだけを確認するhelperです。各テストはパッチと変更後本文を文字列で用意し、ディスク・Git・ネットワークから独立してparse_patchとbuild_rowsを検証します。\n\n離れた2ハンクの前後・間の共通行が残り、追加行のold番号と削除行のnew番号がNoneになることを確認します。先頭挿入と末尾削除では0行範囲の境界表現も試します。パッチの適用や元ファイルの更新ではなく、全文表示データと各版座標を作る契約のテストです。\n",
+      "code_hash": "674d49ac7edb449b02c28c4034534b44027703aec80fac9124707f64d6319699"
+    },
+    {
+      "id": "tests-diff-path-decoding",
+      "file": "dev/tests/test_diff_parser.py",
+      "side": "new",
+      "start_line": 59,
+      "end_line": 120,
+      "title": "Gitパスの表記差で実ファイル名を失わない",
+      "body": "日時付きの通常ヘッダー、空白入りの引用なしGitパス、UTF-8八進数の引用パスを用意し、復号後の完全な相対パスを期待値にします。単純な空白分割や常時a/b接頭辞除去による切り詰めを防ぐ検証です。\n\n接頭辞なしの実ディレクトリaやbも残し、一部のケースでは復号後のエントリをbuild_rowsへ渡して本文照合まで確認します。実ファイルを開くところは[統合テスト](review:dev/tests/test_walkthrough.py#L142)の担当で、ここでは文字列の解釈を分離しています。\n",
+      "code_hash": "674d49ac7edb449b02c28c4034534b44027703aec80fac9124707f64d6319699"
+    },
+    {
+      "id": "tests-diff-rename-copy-matrix",
+      "file": "dev/tests/test_diff_parser.py",
+      "side": "new",
+      "start_line": 122,
+      "end_line": 146,
+      "title": "接頭辞と実ディレクトリを16通りのrename/copyで区別する",
+      "body": "rename/copy、Gitのa/b接頭辞の有無、引用の有無、本文ハンクの有無を組み合わせた16通りをsubTestで確認します。実際の旧パスをa/file name.py、新パスをb/file name.pyに固定することで、接頭辞の除去が実ディレクトリ名まで削らないことを期待値にします。\n\n各組合せでold_path/new_pathとrename/copyメタデータが完全な相対パスを保ち、本文変更時はx/y、変更なしではsameの表示行が返ることを照合します。OSでファイルを移動・複製するテストではなく、ヘッダー表記を解釈して表示行を構築する回帰テストです。UTF-8八進数など別の表記は[パス復号のテスト](review:dev/tests/test_diff_parser.py#L59)が補います。\n",
+      "code_hash": "674d49ac7edb449b02c28c4034534b44027703aec80fac9124707f64d6319699"
+    },
+    {
+      "id": "tests-diff-file-lifecycle",
+      "file": "dev/tests/test_diff_parser.py",
+      "side": "new",
+      "start_line": 148,
+      "end_line": 269,
+      "title": "追加・削除・名称変更・コピー・権限変更を分ける",
+      "body": "新規ファイルはパッチが現在全文を表すことを要求し、余分な行を拒否します。削除は現在本文Noneから旧全文を復元し、存在する空文字列や途中だけの削除ハンクを拒否します。空ファイルの追加削除はハンクなしでも扱う契約です。\n\n名称変更やコピーは本文ハンクの有無を両方試し、同じコピー元から複数宛先やコピー元自身の変更があっても受理します。重複する出力先とは区別するためです。権限だけの差分でも本文をcontextとして保持しますが、OS上の実モードや名前を変更するテストではありません。\n",
+      "code_hash": "674d49ac7edb449b02c28c4034534b44027703aec80fac9124707f64d6319699"
+    },
+    {
+      "id": "tests-diff-newlines",
+      "file": "dev/tests/test_diff_parser.py",
+      "side": "new",
+      "start_line": 271,
+      "end_line": 338,
+      "title": "末尾改行を本文照合と旧新復元の両方へ残す",
+      "body": "改行なしマーカー、改行だけの追加削除、ハンク外の最終行を用意し、各rowのnewlineから再結合した旧新版が期待する末尾を保持することを確認します。文字列の見た目が同じでも末尾改行が異なる現在本文は拒否します。\n\n改行なし宣言の後に同じ版の次行が現れる矛盾も拒否し、パッチと本文がCRLFの場合は受理します。LF統一と末尾改行の保持を別の条件として扱うため、[本文Hashのテスト](review:dev/tests/test_hashes.py#L96)へつながる検証です。\n",
+      "code_hash": "674d49ac7edb449b02c28c4034534b44027703aec80fac9124707f64d6319699"
+    },
+    {
+      "id": "tests-diff-bom-boundaries",
+      "file": "dev/tests/test_diff_parser.py",
+      "side": "new",
+      "start_line": 340,
+      "end_line": 434,
+      "title": "BOMを版の先頭だけで正規化し行境界を保つ",
+      "body": "BOMを含む生本文でパッチを照合した後、各版の先頭BOMだけを表示から除きます。挿入や削除でBOM付き共通行が先頭と内部を移動するケースは、textとold_textを分けて旧新版の正しい本文を保持するか確認します。ハンク外の共通行やBOMが二重の場合も試します。\n\n垂直タブは改行扱いせず行内文字として残します。表示の正規化で本文内部の文字や行番号を失わない保証であり、エンコーディング一般の自動推定をするテストではありません。\n",
+      "code_hash": "674d49ac7edb449b02c28c4034534b44027703aec80fac9124707f64d6319699"
+    },
+    {
+      "id": "tests-diff-rejection-contract",
+      "file": "dev/tests/test_diff_parser.py",
+      "side": "new",
+      "start_line": 436,
+      "end_line": 556,
+      "title": "不完全・矛盾・非対応のパッチを黙って受理しない",
+      "body": "現在本文の不一致、行数の過不足、不正・重複・範囲外の座標をparse_patchとbuild_rowsの段階ごとに拒否させます。親参照、絶対パス、ドライブ、代替ストリーム、引用文字の復号後に現れる危険なパスも入力例を分けています。\n\ncombined diff・バイナリ・説明文だけの入力、Gitメタデータの矛盾、同じ出力先の重複はValueErrorです。一方、別ファイル2件や空パッチは受理します。列挙した境界条件の回帰テストであり、Gitが出せるすべての差分形式への対応を保証するものではありません。\n",
+      "code_hash": "674d49ac7edb449b02c28c4034534b44027703aec80fac9124707f64d6319699"
+    },
+    {
+      "id": "tests-hash-normalization",
+      "file": "dev/tests/test_hashes.py",
+      "side": "new",
+      "start_line": 21,
+      "end_line": 141,
+      "title": "元bytesと正規化した旧新全文のHashを区別する",
+      "body": "ケースごとの2行プロジェクトを専用一時領域に作ります。期待値helperは正規化しないSHA-256だけを計算し、テスト側でBOM除去・LF統一後の期待本文を明記するため、製品の正規化を同じ処理で追認するだけになりません。\n\n先頭BOM・日本語・CRLF・末尾改行なし、ハンク外の共通行、削除旧全文を含めてcode_hashesを照合します。CRLF化だけなら同じHash、末尾改行の除去では別Hashです。元bytesのsha256とは役割が異なり、同じnew本文なら全体・差分のどちらでも同じ解説を照合できます。\n",
+      "code_hash": "6658bccfe0f11e836f590a5224cd561288a0b7fa16228399f02d1ae82b71e99c"
+    },
+    {
+      "id": "tests-hash-statuses",
+      "file": "dev/tests/test_hashes.py",
+      "side": "new",
+      "start_line": 143,
+      "end_line": 198,
+      "title": "未記録・不一致・形式不正を別の状態にする",
+      "body": "正しいHashの大文字表記はverifiedとして受理し、入力表記を保持しつつ計算値は小文字にします。形式は正しいが本文が違う値はmismatch、省略はmissingとしてカードを残し、自己確認資料にも警告を出すことを確かめます。\n\n長さ・文字種・型が不正なHashはマージを拒否します。old側カードはnewではなく旧全文のHashへ照合します。verifiedは確認したコード版との一致であって、解説の意味・著者・図の内容を認証するものではありません。\n",
+      "code_hash": "6658bccfe0f11e836f590a5224cd561288a0b7fa16228399f02d1ae82b71e99c"
+    },
+    {
+      "id": "tests-hash-stale-retention",
+      "file": "dev/tests/test_hashes.py",
+      "side": "new",
+      "start_line": 200,
+      "end_line": 288,
+      "title": "再生成で古い解説の根拠と消えた参照を残す",
+      "body": "コード変更後も概要と作成時Hashを保存し、行が消えた場合は他行へ付け替えずrange_statusをmissingにします。無効な説明範囲は未解説行を隠さず、古いHash・消えた範囲・切れたリンクを同時に警告できるかも確認します。\n\n対象から外した解説はunattachedへ保持し、再選択時に戻せます。新しい確認済み解説で置換すれば警告が消え、同じIDが重複しないことも試します。自動修復の検証ではなく、再確認に必要な情報を失わない契約です。\n",
+      "code_hash": "6658bccfe0f11e836f590a5224cd561288a0b7fa16228399f02d1ae82b71e99c"
+    },
+    {
+      "id": "tests-hash-schema-cli",
+      "file": "dev/tests/test_hashes.py",
+      "side": "new",
+      "start_line": 290,
+      "end_line": 344,
+      "title": "保存形式とCLI出力でも古い根拠を見えるようにする",
+      "body": "本文の正本をblocksに限定し、旧text/rowsの併記は拒否します。別プロジェクトのreviewへの引継ぎや、大文字・HTML実体参照で表記した不正内部リンクも拒否し、解説の取り違えを防ぎます。\n\n最後はmain入口を通してbuild→merge→本文変更→再buildを行い、標準出力の警告、ディスクのmismatch、HTML埋込のhash_warningsを確認します。ブラウザーで警告がどう描画されるかや、読者が再確認したかはこのテストでは扱いません。\n",
+      "code_hash": "6658bccfe0f11e836f590a5224cd561288a0b7fa16228399f02d1ae82b71e99c"
+    },
+    {
+      "id": "tests-install-relocation",
+      "file": "dev/tests/test_install_skill.py",
+      "side": "new",
+      "start_line": 20,
+      "end_line": 86,
+      "title": "導入元を使えなくして移動後のスキルだけで動かす",
+      "body": "コピー元も導入先も、日本語と空白を含む専用一時領域へ作ります。install後にスキル自体を別場所へ移し、導入元もリネームしてから、移動先CLIを別Pythonプロセスで起動します。\n\nprepareのsessionが移動先CLIを指し、scan/build/mergeからverifiedな解説付きHTML・自己確認資料・同梱marked.jsができることを確認します。元リポジトリ内の絶対参照に依存する欠品を検出するテストで、ユーザーの実スキル領域への導入やAIのスキル発見までは検証しません。\n",
+      "code_hash": "71d1ad468fe7ca99ae7a62db5e53124c3eabceffafa51a89124206fe8d8a05b4"
+    },
+    {
+      "id": "tests-install-preservation",
+      "file": "dev/tests/test_install_skill.py",
+      "side": "new",
+      "start_line": 88,
+      "end_line": 125,
+      "title": "再配置で利用者の編集や無関係なファイルを壊さない",
+      "body": "同じ内容を再installした場合はSKILL.mdのbytesと更新時刻を保ち、既存notes.txtも残します。導入済みCLIが編集されていれば拒否して、その編集とSKILL.mdを保持します。\n\n必須marked.jsの欠落は配置先作成前に検出し、追加された階層付きreferencesやagents/openai.yamlは同じ相対階層で運びます。自動更新や競合のマージ機能を試すものではなく、同一版の再実行と差異発見時の保護を確かめています。\n",
+      "code_hash": "71d1ad468fe7ca99ae7a62db5e53124c3eabceffafa51a89124206fe8d8a05b4"
+    },
+    {
+      "id": "tests-install-path-guards",
+      "file": "dev/tests/test_install_skill.py",
+      "side": "new",
+      "start_line": 127,
+      "end_line": 157,
+      "title": "リンクを経由する配置と暗黙の導入を拒否する",
+      "body": "Pathの検査結果をmockし、symlinkとWindows reparse属性を拒否する分岐を確認します。未作成の配置先でも親の検査に失敗すればディレクトリを作らないことを別ケースで試します。\n\nCLI引数なしは終了値2とskills-dirの案内にし、ユーザー全体のスキル領域を暗黙に書き換えない契約です。実リンクや実ジャンクションを作るテストではないため、OSからその属性が返るところまでは保証しません。\n",
+      "code_hash": "71d1ad468fe7ca99ae7a62db5e53124c3eabceffafa51a89124206fe8d8a05b4"
+    },
+    {
+      "id": "tests-release-payload",
+      "file": "dev/tests/test_package_release.py",
+      "side": "new",
+      "start_line": 27,
+      "end_line": 100,
+      "title": "出荷一覧だけを収録し独立したHashで検証する",
+      "body": "日本語と空白を含む一時出荷元へSHIP_FILESだけを複製します。紛らわしい.git・.env・開発出力・古いZIPを追加し、ZIPの収録集合と件数が出荷一覧とSHA256SUMSに一致することを確認します。\n\n収録bytes、内部一覧の各Hash、ZIP全体の外部checksumを元ファイルから独立に計算して比較し、既存の別ZIPは保持します。同じ入力の再出荷はZIPとchecksumがバイト単位で一致します。同一環境内の再現性のテストであり、異なるPythonや圧縮実装間の同一性を保証するものではありません。\n",
+      "code_hash": "595fc2be3047f16b19f47e0d14fef752f5747364e4d691ed0f721f265dd6e1ec"
+    },
+    {
+      "id": "tests-release-failure-safety",
+      "file": "dev/tests/test_package_release.py",
+      "side": "new",
+      "start_line": 102,
+      "end_line": 195,
+      "title": "出荷失敗で前回成果物を置き換えない",
+      "body": "必須ライセンスの欠落、候補ZIP検証の例外、checksum出力名がディレクトリという失敗を作り、前回ZIP・checksumや無関係な内容が残り、一時ファイルが掃除されることを確認します。ZIPの内容改変・余分な収録も独立したverifierで拒否します。\n\n出荷一覧の親参照は元プロジェクト外へ出る前に拒否し、リンク相当のファイルや親ディレクトリもmockで検出します。リンクの実OS属性取得や、すべての置換途中障害を試すテストではなく、列挙した事前検査と検証失敗の保護を確認します。\n",
+      "code_hash": "595fc2be3047f16b19f47e0d14fef752f5747364e4d691ed0f721f265dd6e1ec"
+    },
+    {
+      "id": "tests-release-standalone",
+      "file": "dev/tests/test_package_release.py",
+      "side": "new",
+      "start_line": 197,
+      "end_line": 249,
+      "title": "展開したリポジトリ配布物からレビューと再出荷を行う",
+      "body": "生成ZIPの各展開先が専用領域内に収まることを確認して展開し、展開先のdev/walkthrough.pyを別プロセスで起動します。[固定fixture一式](review:dev/tests/fixtures/targets-diff.json#L1)から全体・差分をbuild/mergeし、解説Hash、HTML、自己確認資料、同梱素材、削除blocksを確認します。\n\nさらに展開先の受入素材生成ツールを再実行し、full・diff・clipboard-failure・unmerged・no-targets・long・large・hash・diagrams・metadataの全10ケースにHTMLがあることを確認します。full/diffは対象件数とmodeも期待値と比較します。全整数期待値とHash更新段階の照合は[専用テスト](review:dev/tests/test_browser_acceptance.py#L74)が担当し、ここでは配布物から各素材を生成できることを確かめます。最後に展開先からリポジトリZIPと単独skillを再出荷して開発ツールの欠品を検出します。実ブラウザーの表示・操作は検証していません。\n",
+      "code_hash": "595fc2be3047f16b19f47e0d14fef752f5747364e4d691ed0f721f265dd6e1ec"
+    },
+    {
+      "id": "tests-release-windows-batch",
+      "file": "dev/tests/test_package_release.py",
+      "side": "new",
+      "start_line": 251,
+      "end_line": 302,
+      "title": "Windowsバッチの配置パスと失敗終了値を実行検証する",
+      "body": "Windowsのときだけ実行し、日本語・空白のあるバッチを別作業ディレクトリからcmdで起動します。正常出荷の後に必須素材を消して再実行し、非0終了とエラー、前回ZIP保持を確認します。別ケースでは感嘆符を含む配置先へ移し、cmdの遅延展開が有効でも出荷できるか試します。\n\nバッチ内のPython選択と配置基準は実環境を使います。Windows以外ではskipされるため、Python単体のテスト成功だけでこの保証を得たとは扱えません。\n",
+      "code_hash": "595fc2be3047f16b19f47e0d14fef752f5747364e4d691ed0f721f265dd6e1ec"
+    },
+    {
+      "id": "tests-skill-package-content",
+      "file": "dev/tests/test_package_skill.py",
+      "side": "new",
+      "start_line": 21,
+      "end_line": 111,
+      "title": "単独スキル配布の内容・再現性・旧出力保持を確かめる",
+      "body": "テストごとに正規のskillフォルダを日本語・空白付きの一時領域へ複製します。evals・キャッシュ・余分なprivate.txtを混ぜても収録せず、skillとzipの全bytesが同じで、各checksumが対応することを確認します。\n\n同一入力の再出荷、無関係なリポジトリZIPの保持、候補検証失敗時の旧4成果物保持、一時領域の掃除を試します。入力skill内への出力や必須素材の欠落は出力前に拒否します。収録期待値の一部は製品のcollect_payloadを使うため、未知の必須ファイルをすべて独立に列挙するテストではありません。\n",
+      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+    },
+    {
+      "id": "tests-skill-package-contract",
+      "file": "dev/tests/test_package_skill.py",
+      "side": "new",
+      "start_line": 113,
+      "end_line": 189,
+      "title": "配布説明の形式と同梱リンクを出荷前に確認する",
+      "body": "frontmatterは名前・説明など対応する項目、重複、型、限られたYAML表記を検証します。Markdownのローカルリンクは実際の収録payload内へ閉じる必要があり、ディスクにあるだけで未収録のevalsへ参照しても拒否します。コードフェンス内の例や外部リンクは受理するケースです。\n\n素材の親がリンク相当なら出力前に止め、ZIPの余計なメンバーや改変bytesも拒否します。汎用YAMLパーサーやMarkdown全文法の対応を保証するテストではなく、配布に採用した形式とリンク検査の境界を固定します。\n",
+      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+    },
+    {
+      "id": "tests-skill-package-card-flow",
+      "file": "dev/tests/test_package_skill.py",
+      "side": "new",
+      "start_line": 191,
+      "end_line": 241,
+      "title": "配布物だけでカード作成から最終再buildまで通す",
+      "body": "生成skillを展開し元スキルをリネームしてから、展開先CLIをPYTHONPATH空で別プロセス起動します。prepareのcards_cliが展開先を指すことを確認し、変更後1行と削除旧1行をread、担当別add、SVG添付、reviewed、概要、export、merge、再buildまで進めます。\n\n2カードのverified、警告なし、self-reviewのSVG全文、2ファイルの確認記録、作成手順と分担資料の同梱を確認します。CLIの単独実行経路の検証で、AIによる解説の意味の自己確認や実ブラウザー表示は含みません。\n",
+      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+    },
+    {
+      "id": "tests-skill-package-full-diff",
+      "file": "dev/tests/test_package_skill.py",
+      "side": "new",
+      "start_line": 243,
+      "end_line": 332,
+      "title": "単独展開先で削除・権限差分・図の保持を確認する",
+      "body": "展開前にZIPパスが専用領域内へ収まることを確認し、元スキルを使えなくしてからprepareと全体・差分build/mergeを行います。main.pyの図付きカード、削除old.py、本文の変わらないrun.shの権限差分を組み合わせます。\n\n最終再build後もHashがverifiedで図と説明が残り、差分では削除blocks、old/new mode、context本文、差分要約が保持されることを確認します。OS上の実行権限を変更するテストではなく、渡されたパッチの付加情報を資料に保つ検証です。\n",
+      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+    },
+    {
+      "id": "tests-prepare-session-inventory",
+      "file": "dev/tests/test_prepare_review.py",
+      "side": "new",
+      "start_line": 19,
+      "end_line": 67,
+      "title": "準備処理は絶対パスのセッションと全一覧を返す",
+      "body": "各ケースは日本語・空白付きの一時プロジェクトへmain.py、隠しファイル、バイナリを作ります。プロジェクト引数省略時は呼び出し元cwdを採用し、標準出力JSONと保存session.jsonが一致し、値が絶対パスであることを確認します。\n\ninventoryは3ファイルすべてを未選択で保持し、main.py本文を含めません。targets・comments・reviewはまだ作らないため、準備がAIの対象選定や解説作成を代行したと誤認しない構成です。\n",
+      "code_hash": "a34a4165fb30a149df922d038cc388df5d2748070968e98b15ab174d67ff0666"
+    },
+    {
+      "id": "tests-prepare-work-isolation",
+      "file": "dev/tests/test_prepare_review.py",
+      "side": "new",
+      "start_line": 69,
+      "end_line": 110,
+      "title": "作業先を対象から分離し再実行で既存作業を保つ",
+      "body": "同じ親へ2回準備しても固有ディレクトリとなり、先のkeep.txtを保持します。既定のOS一時領域はgettempdirだけをmockしてプロジェクト外へ置かれることを確認します。\n\n対象内の作業先、不在プロジェクト、リンク相当の親を拒否し、拒否後に新しい親を作っていないことも確かめます。実OSの全権限パターンではなく、指定した境界と検出分岐を分離したテストです。\n",
+      "code_hash": "a34a4165fb30a149df922d038cc388df5d2748070968e98b15ab174d67ff0666"
+    },
+    {
+      "id": "tests-prepare-cli-connection",
+      "file": "dev/tests/test_prepare_review.py",
+      "side": "new",
+      "start_line": 112,
+      "end_line": 138,
+      "title": "準備の戻り値をそのまま後続CLIへ接続する",
+      "body": "prepareが返したtargets・cli・review_dir・commentsの絶対パスを使い、対象を書いてbuildし、そこで得たコードHashで解説を作ってmergeします。最後にverifiedとHTML・自己確認資料の存在を確認します。\n\nセッションが単なるパス一覧ではなく、後続処理へ接続できることを別プロセスで確認する統合テストです。カードストア経由の作成手順はここでは通さず、[単独配布のカード試験](review:dev/tests/test_package_skill.py#L191)が補います。\n",
+      "code_hash": "a34a4165fb30a149df922d038cc388df5d2748070968e98b15ab174d67ff0666"
+    },
+    {
+      "id": "tests-scaling-lazy-errors",
+      "file": "dev/tests/test_scaling.py",
+      "side": "new",
+      "start_line": 15,
+      "end_line": 28,
+      "title": "遅延反復でも後半の不正を見逃さない",
+      "body": "iter_patchの最初のエントリやiter_build_rowsの最初の行を正常に取得した後、残りを消費すると重複パス・不完全ハンク・本文不一致がValueErrorになることを確かめます。\n\nストリーミング化で先頭だけ成功しても入力全体を正常扱いしないための回帰テストです。利用側が反復を途中で止めた場合まで検証を完了できることを保証するものではなく、最後まで消費する契約が前提になります。\n",
+      "code_hash": "a9525b20c279a8ce916d77f72da9e1ee5089fa9ceeb68520a4403af948e007da"
+    },
+    {
+      "id": "tests-scaling-unselected-memory",
+      "file": "dev/tests/test_scaling.py",
+      "side": "new",
+      "start_line": 30,
+      "end_line": 59,
+      "title": "対象外の大きな差分をファイル数分保持しない",
+      "body": "4000行のファイル6個とパッチを測定前に用意し、対象0件で1個分と6個分をcreate_reviewします。Git注記をmockし、GC後のtracemalloc peakを比較して追加確保がファイル数に比例して増えないことを閾値で確認します。全6件のinventoryは残します。\n\n対象外でも本文不一致は拒否することを最後に確認します。入力自体のメモリ、OS全体の使用量、実行時間、任意規模の絶対上限を測るベンチマークではありません。\n",
+      "code_hash": "a9525b20c279a8ce916d77f72da9e1ee5089fa9ceeb68520a4403af948e007da"
+    },
+    {
+      "id": "tests-scaling-coverage",
+      "file": "dev/tests/test_scaling.py",
+      "side": "new",
+      "start_line": 61,
+      "end_line": 97,
+      "title": "未解説範囲の意味とコメント走査回数を分けて確認する",
+      "body": "旧新番号と追加削除を持つ固定rowsに対し、seed固定の乱数で35コメントを30組作り、単純な参照計算とuncovered_linesの結果を照合します。missing範囲を被覆と数えず、共通行はどちらかの版で説明されれば扱われる意味を確認します。\n\n別ケースは4万行と約2000コメントを用い、辞書get回数がコメント件数の2倍以内であることを測ります。全処理時間の厳密な計算量証明ではなく、各行ごとに全コメントを読み直す退行を検出する仕組みです。\n",
+      "code_hash": "a9525b20c279a8ce916d77f72da9e1ee5089fa9ceeb68520a4403af948e007da"
+    },
+    {
+      "id": "tests-walkthrough-fixture-isolation",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 29,
+      "end_line": 140,
+      "title": "実ファイルの統合試験をケースごとに分離する",
+      "body": "各ケースは専用一時領域にプロジェクトと兄弟の出力先を作り、通常2ファイル、.git、対象外.env、NUL入りバイナリの5件を準備します。bytes書込みでBOMや改行を保ち、addCleanupで途中失敗時も回収します。\n\nreview helperは保存せず辞書を作り、build helperはmain入口を通して保存結果を戻します。run_cliは同一プロセス内でstdout/stderrを捕捉し、output_bytesは全成果物の変更前後比較に使います。対象省略や空リストをmain.pyへ置き換えるのはこのhelperの都合で、対象0件の製品仕様をここから判断することはできません。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "tests-walkthrough-inventory-git",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 142,
+      "end_line": 227,
+      "title": "全一覧・対象選択・Git無視注記を別の情報にする",
+      "body": "全体と差分の両方で5ファイルを一覧化し、選択したmain.pyだけ本文に取り込み、対象外.envの内容は混ぜないことを確認します。両モードで現在全文が一致し、差分では旧削除行とハンク外の共通行も保持します。\n\nGitがある場合は実リポジトリを作り、否定・入れ子・ルート限定・追跡済みの無視規則を試します。無視対象の明示選択や削除パス注記も確認します。Git未検出・タイムアウト・非リポジトリはmockし、一覧と本文を取得しつつ無視注記をfalseへ戻します。Gitなしでは実規則のケースがskipされます。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "tests-walkthrough-diff-display",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 229,
+      "end_line": 301,
+      "title": "変更行がなくても差分の意味と対象外整合を保つ",
+      "body": "パッチにない選択済みhelper.pyは全文contextで保持します。権限だけ、100%名称変更・コピー、空ファイル追加削除もdiff_metadataと人間向けdiff_summaryを持ち、自己確認資料に残ることを確認します。\n\n未選択の削除ファイルもinventoryへ残し、選択すると旧全文を復元します。一方、対象外の変更でも本文不一致や「削除済みなのに現在ファイルが残る」矛盾は拒否します。表示資料のための差分解釈を試すもので、実ファイルのrename・chmodやパッチ適用は行いません。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "tests-walkthrough-source-boundaries",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 303,
+      "end_line": 393,
+      "title": "文字・読取不能・リンクを取り込み境界で扱う",
+      "body": "BOM・CRLF・日本語・末尾改行なしのファイルで表示本文と元bytesのsha256を分け、BOM付きtargets JSONと差分でも整合することを確認します。不正UTF-8とNULの選択本文は拒否し、垂直タブや末尾空行は失わない契約です。\n\nscandirのPermissionErrorはmockして一覧と警告へ残します。シンボリックリンクは実作成して外部を追わず選択も拒否しますが、OSで作成不可ならskipします。実権限の全パターンやWindowsの全リンク種別をこの試験だけで確認したとは扱いません。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "tests-walkthrough-comments-links",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 395,
+      "end_line": 475,
+      "title": "マージの置換契約と内部リンク検証を確認する",
+      "body": "新行・旧行・別ファイルへのリンクを持つコメントをマージし、side省略がnewであること、次のmergeが全コメントと概要を置換すること、繰り返しで増殖せず空配列で消せることを確認します。\n\n不正な範囲・型・ID・対象・本文・余計な項目はreviewを部分更新せず拒否します。内部リンクは選択済みの実在行だけを許可し、旧0行・未選択・不在・親参照・形式不正を概要と本文の両方で検査します。空白パスのURLエンコードは正常に受理します。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "tests-walkthrough-block-storage",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 477,
+      "end_line": 556,
+      "title": "blocksだけを正本にして全文と例外行を往復させる",
+      "body": "1万行の連続本文がschema 2の1ブロックに保存され、旧text/rowsを重複保持せず復元できることを確認します。空本文・空行・日本語・末尾改行なし・垂直タブに加え、追加削除とBOMの版別old_textもrowsとblocksを往復させます。BOM除去後に空となる行でも座標を保持します。\n\n旧schemaでのbuild/mergeは全成果物を保持して拒否し、区分・番号・本文・連続性の壊れたblocksもmerge前に拒否します。保存サイズの回帰を狙う検証であり、ブラウザーの巨大ファイル描画性能までは測りません。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "tests-walkthrough-artifact-snapshot",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 558,
+      "end_line": 619,
+      "title": "オフライン素材と固定スナップショットの保存を確かめる",
+      "body": "終了scriptタグや長いバッククォートを含む本文でbuildし、同梱素材・ライセンス、HTML埋込JSONの山括弧エスケープ、復号後のデータ一致、外部src/hrefがないことを検証します。workerソースも安全に埋め込み、self-reviewは十分長いコードフェンスと対象外一覧を持ちます。\n\n別ケースではbuild後に元main.pyを消して別ファイルを追加しても、mergeが再走査せずblocks・元Hash・一覧・日時を保つことを確認します。元コード更新を検出するのは再buildであり、mergeやブラウザー再読込だけではありません。実ブラウザーでのスクリプト挙動や全通信を観測する試験ではありません。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "tests-walkthrough-output-protection",
+      "file": "dev/tests/test_walkthrough.py",
+      "side": "new",
+      "start_line": 621,
+      "end_line": 697,
+      "title": "誤入力で既存資料や対象プロジェクトを壊さない",
+      "body": "不正な範囲のCLI mergeは終了値2と説明を返し、全成果物bytesを保持します。既存comments.example.jsonの編集は再buildで残り、対象プロジェクト内へのbuild/scan出力と無関係な非空出力先は、新規作成や上書きの前に拒否します。\n\n最後に実Python子プロセスでscanを起動し、終了値、5件の未選択inventory、入口の実行経路を確認します。ファイル入出力の保護とCLIの接続を検証する層であり、ブラウザーの画面・選択・スクロール操作は実行していません。\n",
+      "code_hash": "5c875658a0575387f92a955bfba0065a34591d761b0afbe2b8631be502edf632"
+    },
+    {
+      "id": "ui-test-harness",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 36,
+      "title": "ブラウザーなしで本体の関数を検証する入口",
+      "body": "app.js全体をvm.Scriptで構文検査した上で、関数の開始・終了文字列を見つけて必要部分をVMへ取り込みます。実装をテスト用に複製せず、実際の関数をassertで確認する構成です。抽出位置が見つからなければテストは失敗します。実行はリポジトリルートからnode dev/tests/ui_logic.test.cjsです。\n\nDOMやスクロール値は後半の独自スタブで与えます。したがって関数の計算・分岐・受渡しを保証するテストであり、ブラウザー全体での初期起動、実際のCSSレイアウト、MarkedのDOM処理、クリップボード権限、支援技術の動作までを証明するものではありません。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "ui-test-scroll",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 38,
+      "end_line": 96,
+      "title": "対象外判定と連動位置の境界条件を固定する",
+      "body": "対象外の簡略一覧でGit除外・ドットフォルダを隠しつつ、通常のドットファイルを残す判定を検証します。続いて[連動位置の計算](review:skills/walkthrough-review/assets/ui/app.js#L564)について、到達不能アンカー、同一行の複数カード、末尾への丸め、スクロール不能ペイン、アンカーなしを確認します。\n\n代表的な対応表では入力位置を1pxずつ進め、結果が単調かつ範囲内に収まることも調べます。これは補間関数に対する保証です。実ブラウザーでのホイール・タッチ・スクロールイベントの連続発火や見た目の滑らかさは別の確認範囲です。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "ui-test-prompts",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 98,
+      "end_line": 170,
+      "title": "旧新・Hash・図を質問文へ落とさないための検証",
+      "body": "パスに空白とパーセントを含む旧行の質問を使い、参照のURLエンコード、作成時と表示中のHash、末尾改行なし、バッククォートを含むコードのフェンスを確認します。消失範囲には無関係なコードが入らず、old_textがあれば旧側へ使われることも検証します。\n\n本文変更がない権限・名前変更の差分も質問へ残し、解説指定・行指定・ファイル全体で含める図の範囲を確認します。図の説明とSVG全文にも安全な長さのフェンスを使うことを確かめます。生成済み文字列の保証であり、コピー操作や外部エージェントの回答品質は対象外です。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "ui-test-render",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 172,
+      "end_line": 303,
+      "title": "一覧と図を独自DOMスタブで確認する",
+      "body": "renderingHarnessは要素生成・属性・イベントを模した最小DOMを用意し、対象外/対象/すべてフィルタと検索結果を照合します。対象外一覧が空でも全レビュー済みと表示しないこと、本文以外の差分を文字列で描き次のファイルで消すことを確認します。\n\n図はinline SVGを挿入せず説明付きimgのdata URLへ渡すこと、読込み後にアンカーを再計算すること、拡大後に再拡大ボタンを出さないことを調べます。欠損・errorでも説明を残します。画像のload/errorは手動で発火するため、実際のSVG描画・文字切れ・画像隔離のブラウザー挙動はこのテストだけでは確認できません。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "ui-test-cards",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 305,
+      "end_line": 377,
+      "title": "カード移動が質問・リンク・文章選択を妨げないことを確認する",
+      "body": "カードの本文・見出し・余白から旧行とカードIDへ移動できる一方で、子ボタン・リンク・図拡大・選択中の文章・既に処理済みのイベントではカード全体の移動を起こさないことを確認します。行番号ボタンはキーボード操作の入口として残します。\n\n範囲を失ったカードではクリック移動と行番号ボタンを止め、Hash警告・範囲警告・質問を残すことも検証します。[実装](review:skills/walkthrough-review/assets/ui/app.js#L489)の分岐をスタブで呼び分けており、実際のイベント伝播・選択ドラッグ・キーボードのフォーカス順はブラウザーでの確認が必要です。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "ui-test-navigation",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 379,
+      "end_line": 555,
+      "title": "参照移動の版とカードIDを保ち、仮想行にも届かせる",
+      "body": "ナビゲーション用スタブで、同じ行の2枚目や重複範囲のカードを選んでも別カードへ戻らないことを検証します。旧新の強調を分け、明示的な行移動では横スクロールを行頭へ戻します。削除ファイルの質問は旧版、スキップリンクは現在のファイル維持を確認します。\n\nResizeObserverの通知、テンプレートIDの欠落・重複、空行・末尾改行・BOM例外を持つブロックの非破壊展開、描画中は最後の移動だけ保留することも対象です。画面外行のDOMがなくても、固定行高から5万行目のアンカーを作れることを確かめます。位置は仮定した矩形であり、実測レイアウトとの一致は別確認です。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "ui-test-worker",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 557,
+      "end_line": 619,
+      "title": "実Prismと偽Workerを使い、解析と非同期制御を分けて検証する",
+      "body": "Worker本体は同梱PrismをVMへ読み、旧新の独立解析、複数行文字列、特殊文字のエスケープ、行ごとのspanの釣合い、未知言語のnullを確認します。Prism既定のWorkerハンドラーを無効にしていることも確かめます。\n\n呼出し側はFakeWorkerで、送る旧新本文、取消時のterminate・タイマー解除・Blob URL解放、古い結果の無視、再訪キャッシュ、error時の後始末を検証します。実ブラウザーのBlob Worker起動や15秒経過の実時間試験ではなく、制御経路のテストです。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "ui-test-virtual",
+      "file": "dev/tests/ui_logic.test.cjs",
+      "side": "new",
+      "start_line": 621,
+      "end_line": 751,
+      "title": "5万行の表示窓・再利用・切替・印刷を検証する",
+      "body": "独自DOMとタイマースタブで5万行を展開し、500pxの表示高・25px行高ではDOMを61行以下に抑えながら、中間・末尾・範囲強調・共通DOMの再利用を確認します。行ごとのクリックハンドラーを持たず、親の一つのハンドラーで行移動と質問を扱うことも確かめます。\n\n色付けキャッシュの2件/800万文字上限、古い非同期描画の破棄、印刷時の全行展開と復帰、行高変更時の位置換算を検証します。61行はこのテスト条件の値で、どの画面でも同じ上限という意味ではありません。実際の速度・メモリー使用量・印刷ページ割り・ブラウザーの巨大スクロール上限は測っていません。非同期検証の失敗は終了コードへ反映します。\n",
+      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+    },
+    {
+      "id": "integration-benchmark-coverage",
+      "file": "dev/tools/benchmark_scaling.py",
+      "start_line": 21,
+      "end_line": 29,
+      "title": "改善前の意味を保っているかを比較用実装で確かめる",
+      "body": "各行で全解説を探す旧方式を、計測専用の比較関数として残しています。新版または旧版の範囲で被覆される行は説明済みとし、未被覆のcontext行を新版、削除行を旧版へ分類します。\n\n後半のmainは新方式とこの結果が同じことをassertしてから、範囲判定と自己確認資料の生成時間を記録します。固定の合成入力による実測なので、測定値はそのPython実行環境と入力条件に依存します。\n",
+      "code_hash": "aae31419b33d734958e5ec8eb4b019a8bf9806b6942f3ef6bd31481304bc5eb3",
+      "side": "new"
+    },
+    {
+      "id": "integration-benchmark-memory",
+      "file": "dev/tools/benchmark_scaling.py",
+      "start_line": 32,
+      "end_line": 56,
+      "title": "入力を先に作り、生成処理の追加確保メモリを測る",
+      "body": "同じ大きさのファイルとパッチを用意し、対象0件で1ファイルと6ファイルを処理します。入力作成後にtracemallocを開始するため、比較する値はパッチ文字列自体を除いたPythonの追加確保ピークです。\n\n対象外を検証後に解放できていれば、ファイル数に比例して全文が積み上がらないことを確認できます。OSプロセス全体のメモリ量や、異なる文字構成・最大単一ファイルの負荷を網羅する測定ではありません。\n",
+      "code_hash": "aae31419b33d734958e5ec8eb4b019a8bf9806b6942f3ef6bd31481304bc5eb3",
+      "side": "new"
+    },
+    {
+      "id": "integration-cards-wrapper",
+      "file": "dev/tools/comment_cards.py",
+      "start_line": 7,
+      "end_line": 19,
+      "title": "開発用カードCLIも同じ検証・保存処理を呼ぶ",
+      "body": "配布スキル内のcomment_cards.pyを読み込み、CLI実行時はmainへ渡します。import時も実体モジュールへ統一するため、開発用入口に別の保存ロジックやJSON仕様を持ちません。\n\n標準出力・標準エラーをUTF-8へ切り替えてから起動し、日本語の保存結果やエラーを呼び出し側で扱いやすくします。\n",
+      "code_hash": "7491188ba7f8d2c5c3a2051d083261d1e709ed0353cd1073771b96e4abf1540a",
+      "side": "new"
+    },
+    {
+      "id": "integration-installer-reuse",
+      "file": "dev/tools/install_skill.py",
+      "start_line": 23,
+      "end_line": 45,
+      "title": "既存配置では配布対象の各バイト列を比較して保護する",
+      "body": "配置先は--skills-dirで明示し、配布元と配置先のリンクを検査します。既存スキルの配布対象ファイルがすべて同じなら再利用し、一つでも不足・相違があれば変更せず停止します。\n\nこれは既存配置の全内容を消して置換するインストーラーではありません。比較は配布対象に対して行われ、既存ディレクトリの追加ファイルを除去する動作もありません。\n",
+      "code_hash": "a8247f53709e41068c91b13933c14c940cb24d45a3a6261b9a4ce48f03c81f05",
+      "side": "new"
+    },
+    {
+      "id": "integration-installer-staging",
+      "file": "dev/tools/install_skill.py",
+      "start_line": 46,
+      "end_line": 58,
+      "title": "新規配置は完成した一時ディレクトリをrenameする",
+      "body": "同じ親ディレクトリの一時領域へ全ファイルを書いてから、最終名へ移動します。通常の実行で、利用者が一部だけ揃ったスキルを見てしまう時間を減らす構成です。\n\n生成中に別プロセスが配置先を作った場合も上書きせず止まります。ユーザー全体の設定やスキル探索先そのものを変更する処理は含みません。\n",
+      "code_hash": "a8247f53709e41068c91b13933c14c940cb24d45a3a6261b9a4ce48f03c81f05",
+      "side": "new"
+    },
+    {
+      "id": "integration-release-manifest",
+      "file": "dev/tools/package_release.py",
+      "start_line": 27,
+      "end_line": 99,
+      "title": "開発用ZIPは明示した出荷一覧から作る",
+      "body": "SHIP_FILESを出荷範囲の根拠にし、skillsの実体だけでなく、開発用入口・テスト・fixture・再梱包ツールも含めます。リポジトリ全体を再帰コピーしないため、Git履歴や実行結果、個人設定が入り込みにくい構成です。\n\n新しい保守対象を追加した場合はこの一覧も更新する必要があります。通常利用向けの[スキル単体梱包](review:dev/tools/package_skill.py#L28)とは配布目的が異なります。\n\n受入データの期待値を検証するtest_browser_acceptance.pyも出荷一覧へ含め、展開後に同じ回帰確認を実行できる構成です。\n",
+      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "side": "new"
+    },
+    {
+      "id": "integration-release-source-check",
+      "file": "dev/tools/package_release.py",
+      "start_line": 132,
+      "end_line": 161,
+      "title": "読み取ったバイト列を梱包と照合の共通入力にする",
+      "body": "出荷対象とその親のリンクを拒否し、解決後のパスがプロジェクト内か、必須ファイルがあるかを確認します。読込前後のサイズ・更新時刻の変化も検出します。\n\n検査したバイト列をpayloadへ保持し、後のZIP作成とHash計算に同じ内容を使います。複数ファイル全体をOSで同時に固定する処理ではないため、全ソースが同一時点だったことまで保証するロックではありません。\n",
+      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "side": "new"
+    },
+    {
+      "id": "integration-release-archive-check",
+      "file": "dev/tools/package_release.py",
+      "start_line": 164,
+      "end_line": 213,
+      "title": "再現可能な並びで梱包し、完成候補を読み直す",
+      "body": "収録順・ZIPの日時・通常ファイル権限を固定し、各元バイト列のSHA-256一覧を同梱します。同じ内容・実行環境なら、更新日時だけでアーカイブが変わることを避けられます。\n\n候補ZIPを読み直し、余分な項目・重複・欠落・CRCと各本文を照合します。Hash一覧は内容の照合用であり、配布者の署名や真正性を証明する仕組みではありません。\n",
+      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "side": "new"
+    },
+    {
+      "id": "integration-release-publication",
+      "file": "dev/tools/package_release.py",
+      "start_line": 216,
+      "end_line": 266,
+      "title": "検証済み候補だけを正式ZIPへ置き換える",
+      "body": "出力を固定のdev/distへ限定し、ZIPとHash出力の型を事前確認します。固有一時名で候補を作り、アーカイブ検証が終わるまで既存の正式ZIPを更新しません。\n\nZIPとHashファイルは個別にreplaceするため、二つ全体の同時トランザクションではありません。finallyで片付けるのは、この呼び出しがdist直下に作った一時ファイルだけです。\n",
+      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-metadata-check",
+      "file": "dev/tools/package_skill.py",
+      "start_line": 63,
+      "end_line": 117,
+      "title": "配布で使う範囲のfrontmatterを厳格に読む",
+      "body": "一般的なYAML全体を模倣せず、このスキルで採用する一行文字列のname・description・compatibilityだけを検証します。未知のキー、重複、空値、想定外の型に見える値を曖昧に通しません。\n\nスキル名と説明の長さも確認します。frontmatter構文を増やす場合はこの検査も変更する必要があり、汎用YAMLの互換パーサーとして使うAPIではありません。\n",
+      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-reference-check",
+      "file": "dev/tools/package_skill.py",
+      "start_line": 120,
+      "end_line": 160,
+      "title": "ローカル参照が配布物の外へ出ていないか確認する",
+      "body": "Markdownのコードフェンスを除いた本文からリンクを探し、相対パスを解決して収録ファイル・ディレクトリの存在を調べます。スキルを元リポジトリから切り離しても、補助資料へ辿れるようにする検査です。\n\nリンク解析は限定した正規表現で、Markdown全構文を解釈するものではありません。見出しアンカーの存在確認や、HTTPリンク先の取得も行いません。\n",
+      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-payload",
+      "file": "dev/tools/package_skill.py",
+      "start_line": 163,
+      "end_line": 206,
+      "title": "必須実装と補助Markdownだけを配布候補へ集める",
+      "body": "固定の必須ファイルへ、references配下のMarkdownと任意のagents/openai.yamlを加えます。リンクを追わず、読取エラーを資料がないものとして無視しない構成です。\n\n各ファイルの元bytesを読み、途中のサイズ・更新時刻変化を確認してから、frontmatterとローカルリンクを検証します。devのキャッシュや評価生成物を製品スキルへ混入させない境界です。\n",
+      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-archive",
+      "file": "dev/tools/package_skill.py",
+      "start_line": 234,
+      "end_line": 277,
+      "title": ".skillと.zipを同じ検証済みバイト列から作る",
+      "body": "出力がスキル本体の内側にないこと、四つの出力名が通常ファイルとして置換可能なことを先に確認します。一時領域でZIPを作って読み直した後、その同じバイト列を.skill/.zipへ使います。\n\nSHA-256ファイルも同時に用意しますが、正式名への置換は一つずつです。通常の生成失敗で既存成果物を壊しにくくする手順で、複数ファイルを障害時にも一括切替する仕組みではありません。\n",
+      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "side": "new"
+    },
+    {
+      "id": "integration-acceptance-scope",
+      "file": "dev/tools/prepare_browser_acceptance.py",
+      "start_line": 37,
+      "end_line": 84,
+      "title": "専用の生成先と所有マーカーで検証入力を保護する",
+      "body": "出力がdev/output/browser-acceptance配下に収まるか、経路にリンクがないかを検査します。既存の非空フォルダは専用マーカーが一致する場合だけ再利用し、無関係な出力先をfixtureとして扱わないようにしています。\n\n画面生成は本体のcreate_review・merge_comments・write_reviewを呼び、検証用に別の製品実装を作りません。この時点ではHTMLを用意しただけで、ブラウザーの合格判定ではありません。\n",
+      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "side": "new"
+    },
+    {
+      "id": "integration-acceptance-cases",
+      "file": "dev/tools/prepare_browser_acceptance.py",
+      "start_line": 98,
+      "end_line": 188,
+      "title": "長文・Hash変更・図・差分付加情報を目的別に再現する",
+      "body": "長文と同じ開始行のカード、消失する参照行、対象から外れるファイル、SVG分岐図、本文が同じ権限変更をそれぞれ用意します。正常な短いコードだけでは見つけにくいUIの境界を再現するための入力です。\n\n固定カードは各fixtureの生成済みコードHashを採用し、未照合のケースだけ意図的にHashを省きます。実際のAI説明の品質を測る評価とは分けて読む必要があります。\n",
+      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "side": "new"
+    },
+    {
+      "id": "integration-acceptance-expectations",
+      "file": "dev/tools/prepare_browser_acceptance.py",
+      "start_line": 214,
+      "end_line": 267,
+      "title": "五万行の生成内容と期待値を一致させる",
+      "body": "large.pyは50,000行、横長行、複数行文字列、改行なしの末尾を含みます。small.pyと合わせて2対象、解説2件・verified 2件を生成し、仮想化・Worker・遠い行への移動を同じ画面で確認する入力です。\n\nL259のexpectations.largeもlines 50000・comments 2・verified 2へ修正済みです。旧値の10,000行・解説1件という不一致は解消しています。[専用テスト](review:dev/tests/test_browser_acceptance.py#L1)は全受入ケースの数値期待値を実際のreview.jsonへ照合し、Hashの3段階も確認します。これはデータの整合確認であり、画面の合否は表示・操作を通して確かめます。\n",
+      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "side": "new"
+    },
+    {
+      "id": "integration-acceptance-copy-failure",
+      "file": "dev/tools/prepare_browser_acceptance.py",
+      "start_line": 278,
+      "end_line": 322,
+      "title": "自動コピーの二経路だけを開発用コピーで失敗させる",
+      "body": "diffレビューの専用コピーを作り、Clipboard APIを拒否、execCommandのcopyをfalseにするスクリプトをapp.jsの前へ追加します。自動コピーが失敗しても、全文選択と手動コピーの案内へ進めるかを確認するためです。\n\n故障注入は開発用画面に限定し、他のexecCommand呼び出しやキーボードによるコピーは保ちます。通常の製品素材へこのスクリプトを混ぜないことが境界です。\n",
+      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "side": "new"
+    },
+    {
+      "id": "integration-acceptance-hash-stages",
+      "file": "dev/tools/prepare_browser_acceptance.py",
+      "start_line": 325,
+      "end_line": 350,
+      "title": "ソース変更だけと再build後を段階的に比較する",
+      "body": "mutate_hashは専用入力だけを12行から3行へ変え、HTMLのHashが変わらないことを確認します。静的HTMLが元コードを自動監視していないことを実演する段階です。\n\nrebuild_hashは変更後入力の形を確かめて同じ出力先へbuildし、コードHash不一致、消失した行、対象外になった解説を再現します。再読み込みだけで更新検出する仕様ではありません。\n",
+      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "side": "new"
+    },
+    {
+      "id": "integration-prepare-wrapper",
+      "file": "dev/tools/prepare_review.py",
+      "start_line": 12,
+      "end_line": 27,
+      "title": "準備ツールの開発用入口も配置先から実体を解決する",
+      "body": "絶対化したスクリプト自身の場所から、同梱prepare_review.pyを読み込みます。CLIならUTF-8出力でmainを実行し、importなら読み込んだ実体へモジュール参照を統一します。\n\n対象プロジェクトや作業先の決定は、このwrapperが別に実装せず、[配布側の準備処理](review:skills/walkthrough-review/scripts/prepare_review.py#L1)へ任せます。\n",
+      "code_hash": "6deeb77d40366701f8835ddce008f302fee511fa32e3284289dc94d97968435b",
+      "side": "new"
+    },
+    {
+      "id": "integration-vendor-integrity",
+      "file": "dev/tools/vendor_assets.py",
+      "start_line": 19,
+      "end_line": 58,
+      "title": "固定版のnpmアーカイブを照合してメモリへ読む",
+      "body": "PrismとMarkedのバージョンを固定し、npmメタデータとtarballをHTTPSで順に取得します。tarball全体のSHA-512をメタデータのintegrity表記と比較し、不一致なら採用しません。\n\nextractallを使わず通常ファイルだけをメモリへ読むため、アーカイブのパスをそのままディスクへ展開しません。この検査は取得したメタデータとの整合であり、開発者の署名を検証する処理ではありません。通常のレビュー生成では通信せず、更新作業時だけ使います。\n",
+      "code_hash": "ab38444f128ef88452f6c4746bb41781b9622cc149175b8631f3860dad609fee",
+      "side": "new"
+    },
+    {
+      "id": "integration-vendor-output",
+      "file": "dev/tools/vendor_assets.py",
+      "start_line": 61,
+      "end_line": 104,
+      "title": "依存順にPrismを連結し、ライセンスと取得履歴を残す",
+      "body": "Prism coreと言語部品を依存順に一つのJSへまとめ、テーマとライセンスも保存します。Markedは通常のscriptで読めるUMD版を採用し、許容する二つのライセンス名から取得します。\n\n最後に版・取得元・integrity・言語部品をversions.jsonへ記録します。全ファイルをまとめて戻す処理はないため、途中で失敗した更新は、終了結果と履歴・実ファイルの両方を確認する必要があります。\n",
+      "code_hash": "ab38444f128ef88452f6c4746bb41781b9622cc149175b8631f3860dad609fee",
+      "side": "new"
+    },
+    {
+      "id": "integration-main-wrapper",
+      "file": "dev/walkthrough.py",
+      "start_line": 8,
+      "end_line": 17,
+      "title": "CLIもimportも唯一の本体へ接続する",
+      "body": "配布スキル内のwalkthrough.pyを動的に読み込み、CLI実行ならそのmainへ渡します。import時はsys.modulesを実体へ差し替えるので、開発テストのmockや設定も同じ実装へ届きます。\n\nこのファイルはコードの取り込み・マージ・HTML生成を持たない入口であり、機能変更は[本体](review:skills/walkthrough-review/scripts/walkthrough.py#L1)で行います。\n",
+      "code_hash": "5b640de993a928b68eabbac19dee466c1aefecb7a98c88b775b83489ac794b81",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-defaults",
+      "file": "skills/walkthrough-review/SKILL.md",
+      "start_line": 8,
+      "end_line": 27,
+      "title": "ユーザーの省略を既定値で補い、目的を理解支援に定める",
+      "body": "一言の依頼でも対象、モード、作業先、説明、自己確認までAIが進める方針です。対象は現在のプロジェクトを根拠にし、ツールの配置場所から勝手に決めません。差分は明示されたときにだけ採用します。\n\n目的はコードの入口・責務・データの流れを人間が理解することです。通常の不具合列挙とは使い分け、必要な対象へアクセスできない場合など、本当に不足する情報だけを確認します。\n",
+      "code_hash": "801255df88ad4b7e351684ae3c00f6fab66c9f073d0b23bf689ee32d91f412fd",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-workflow",
+      "file": "skills/walkthrough-review/SKILL.md",
+      "start_line": 49,
+      "end_line": 74,
+      "title": "コード取得・説明作成・確認を分けて完成させる",
+      "body": "buildがソース全文と行番号を固定し、AIはその固定版を読んでカードの意味を作ります。カード本文はMarkdownで1件ずつ保存し、巨大なコメントJSONを一度に書かせません。\n\n担当別確認が揃ったらexportで入力JSONを集約し、mergeでHTMLへ反映します。その後の最終buildで元コードの変更を検出し、必要ならカードを引き継いで読み直します。図はこの受け渡しを示し、各段階の成功だけでは最終完了にならない点を表しています。\n",
+      "diagrams": [
+        {
+          "title": "取得から自己確認、最終資料まで",
+          "description": "Pythonによる全文取得、Hash付きカードの個別作成、担当別確認、exportとmerge、最終buildと表示確認を順に行います。コードが変わった場合は説明も確認し直します。",
+          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 440 580\">\n<defs><marker id=\"flow-arrow\" markerWidth=\"10\" markerHeight=\"10\" refX=\"9\" refY=\"5\" orient=\"auto\"><path d=\"M0 0 L10 5 L0 10 Z\" fill=\"#476450\"/></marker></defs>\n<g font-family=\"sans-serif\" font-size=\"17\" text-anchor=\"middle\" fill=\"#24442f\">\n<text x=\"220\" y=\"28\">資料が完成するまでの流れ</text>\n<rect x=\"60\" y=\"50\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#edf5e9\" stroke=\"#719366\"/><text x=\"220\" y=\"79\">対象を選ぶ → build</text><text x=\"220\" y=\"103\" font-size=\"15\">Pythonがコード全文を取得</text>\n<path d=\"M220 124 V148\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"155\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#e9f2f6\" stroke=\"#648c9d\"/><text x=\"220\" y=\"184\">カードを1件ずつ作る</text><text x=\"220\" y=\"208\" font-size=\"15\">固定コードにHashを結び付ける</text>\n<path d=\"M220 229 V253\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"260\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#fff7e3\" stroke=\"#ac9453\"/><text x=\"220\" y=\"289\">担当別の自己確認</text><text x=\"220\" y=\"313\" font-size=\"15\">全文・説明・行・図を照合</text>\n<path d=\"M220 334 V358\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"365\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#edf5e9\" stroke=\"#719366\"/><text x=\"220\" y=\"394\">export → merge</text><text x=\"220\" y=\"418\" font-size=\"15\">確認済みカードと概要を集約</text>\n<path d=\"M220 439 V463\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"470\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#e9f2f6\" stroke=\"#648c9d\"/><text x=\"220\" y=\"499\">最終build → HTMLを渡す</text><text x=\"220\" y=\"523\" font-size=\"15\">コード変更と画面を再確認</text>\n<text x=\"220\" y=\"568\" font-size=\"14\">コードが変わった場合は説明も再確認</text>\n</g></svg>"
+        }
+      ],
+      "code_hash": "801255df88ad4b7e351684ae3c00f6fab66c9f073d0b23bf689ee32d91f412fd",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-completion",
+      "file": "skills/walkthrough-review/SKILL.md",
+      "start_line": 63,
+      "end_line": 84,
+      "title": "Hash・確認記録・意味・表示の四つを確認する",
+      "body": "担当は全文と各説明を照合し、親は対象漏れとファイル間の接続を確認します。形式検証が通っても説明の意味の確認は別に必要です。解説不足を埋めるために全行へ機械的にカードを付ける方針ではありません。\n\n最終成果物はHash一致・行範囲有効・警告の解決に加え、埋込JSONと素材、利用可能なら実際の画面まで確認します。未実施の検証や対象外の範囲も伝え、成果物フォルダ全体を引き渡します。\n",
+      "code_hash": "801255df88ad4b7e351684ae3c00f6fab66c9f073d0b23bf689ee32d91f412fd",
+      "side": "new"
+    },
+    {
+      "id": "integration-skill-ui-metadata",
+      "file": "skills/walkthrough-review/agents/openai.yaml",
+      "start_line": 1,
+      "end_line": 4,
+      "title": "スキルを見つけるための表示名と呼び出し文",
+      "body": "AI環境のUIに出す名前、短い説明、実行時の依頼文を持ちます。既定のプロンプトは資料の完成までを求め、準備だけで止めない[SKILL.mdの目的](review:skills/walkthrough-review/SKILL.md#L8)と揃えています。\n\nここは表示用メタデータであり、Pythonの実行コード、スキルのインストール先、外部APIへの認証情報を設定するファイルではありません。\n",
+      "code_hash": "874d2befa3eb7512c63e4767d384f0d1ff9970e06d5eb22dfb0c2babc3300ed1",
+      "side": "new"
+    },
+    {
+      "id": "ui-template-panes",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "side": "new",
+      "start_line": 24,
+      "end_line": 85,
+      "title": "一覧・コード・解説の三つの閲覧領域",
+      "body": "左は検索と対象フィルタを備えた全ファイル一覧、中央は概要・コード・表示不能理由を切り替える領域、右は解説または対象外一覧です。中央のcode-scrollと右のdetail-scrollを独立させることで、長いコードと解説をそれぞれ読み進められます。\n\nコード本文やカードは空の領域へ[JavaScriptの画面切替](review:skills/walkthrough-review/assets/ui/app.js#L645)が配置します。本文以外の差分、行質問、連動切替も専用要素を持ち、hiddenとaria属性で状態を伝えます。IDは実装との接点であり、[UIテスト](review:dev/tests/ui_logic.test.cjs#L510)が欠落・重複を確認します。\n",
+      "code_hash": "6641a56fbb356aa14c7a1127e18ac0013b7b2e45ae82e5e5e20425ecef084a09"
+    },
+    {
+      "id": "ui-template-dialogs",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "side": "new",
+      "start_line": 88,
+      "end_line": 104,
+      "title": "図の拡大と質問文の作成をダイアログに分ける",
+      "body": "図は説明付きの拡大領域、質問は参照表示・質問入力・生成済みプロンプト・コピー結果を持つdialogです。質問の送信先をHTML内に持たず、作った文章を利用者がコーディングエージェントへ渡す操作になっています。\n\n入力のlabel、閉じるボタンのaria-label、コピー結果と画面下のaria-live領域により、視覚以外でも操作結果を追える構造です。メインへ移るスキップリンクはページ先頭に置かれ、[イベント処理](review:skills/walkthrough-review/assets/ui/app.js#L823)で現在のファイルを保持したままフォーカスを移します。\n",
+      "code_hash": "6641a56fbb356aa14c7a1127e18ac0013b7b2e45ae82e5e5e20425ecef084a09"
+    },
+    {
+      "id": "ui-template-data",
+      "file": "skills/walkthrough-review/assets/templates/index.html",
+      "side": "new",
+      "start_line": 105,
+      "end_line": 106,
+      "title": "オフライン画面へデータとWorkerを渡す",
+      "body": "生成時にレビューデータとWorker用ソースを、それぞれ実行されないapplication/json要素へ埋め込みます。[画面の入口](review:skills/walkthrough-review/assets/ui/app.js#L12)は前者をJSONとして読み、[色付けの起動](review:skills/walkthrough-review/assets/ui/app.js#L256)は後者からBlob Workerを作ります。\n\n先頭で読み込むCSS・Marked・app.jsも同梱assetsへの相対参照です。defer付きのapp.jsはHTML構築後に起動するため、各IDを持つ操作要素と埋め込みJSONが揃った状態で初期化できます。資料一式を保持して閲覧する構成です。\n",
+      "code_hash": "6641a56fbb356aa14c7a1127e18ac0013b7b2e45ae82e5e5e20425ecef084a09"
+    },
+    {
+      "id": "ui-app-entry",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 47,
+      "title": "固定JSONを一度読み、閲覧状態を分離する",
+      "body": "画面はreview-dataの埋め込みJSONだけを入口にし、schema_version=2とfiles/inventory配列を確認します。JSONの破損や未対応形式なら、例外メッセージをtextContentで入れた警告へ画面を置き換えて停止します。ここはデータ構造の最低限の確認であり、各カードや行の妥当性は生成側の検証結果を使います。\n\n本文対象と全ファイル一覧をパスのMapへ分け、画面切替・行・選択・描画世代・Worker・スクロール連動をstateへ保持します。元の保存データを編集する機能はありません。対象外の簡略一覧ではGit除外対象とドットフォルダ配下を省きますが、inventory自体は保持され、「すべて」から参照できます。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-hashes",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 49,
+      "end_line": 68,
+      "title": "生成側の照合結果を警告へつなぐ",
+      "body": "カードのhash_statusをverified/mismatch/missingの三状態で読み、不明値は未照合として扱います。ブラウザーでHashを再計算するのではなく、作成時Hash・表示中Hashと生成側の照合結果を表示します。\n\ndata.hash_warningsがあればそれを採用し、なければ各カードのHash・消失範囲・リンク警告から補います。対象を失った解説も件数とself-review.mdへの案内で残します。警告がないことは説明内容そのものの正しさを証明せず、[カード表示](review:skills/walkthrough-review/assets/ui/app.js#L489)でも未照合と移動不能を明示します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-markdown",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 70,
+      "end_line": 116,
+      "title": "Markdownから許可した文書要素だけを残す",
+      "body": "Markedの生HTMLレンダラーはHTML記法を文字へエスケープします。さらに解析後のDOMを許可リストで絞り、全属性を一度消してから必要なものだけを戻します。画像はalt文字へ置き換え、入力は操作できないチェックボックスだけ残します。\n\nリンクはレビュー内参照、http/https、ページ内参照を扱います。外部リンクは新規タブとnoopener/noreferrerを付け、レビュー内参照は[専用の参照移動](review:skills/walkthrough-review/assets/ui/app.js#L891)へ渡します。Markedを利用できなければ、改行を保ったプレーンテキストで読めます。SVG図はこの経路でHTMLにせず、[画像として表示](review:skills/walkthrough-review/assets/ui/app.js#L445)します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-tree",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 118,
+      "end_line": 211,
+      "title": "全一覧から検索・対象別ツリーを組み立てる",
+      "body": "inventoryを対象/対象外/すべてとパス検索で絞り、フォルダをMapでまとめて名前順に描画します。検索中はフォルダを開き、通常の再描画では既存の開閉状態を引き継ぎます。ボタンのパスと一覧情報をtextContentで表示し、選択中ファイルをaria-currentで示します。\n\n右の対象外一覧と対象外フィルタは同じ判定を使います。簡略一覧が空でも「表示する対象外ファイルはありません」とし、全ファイル確認済みとは扱いません。概要では走査数・本文対象数・簡略一覧数、走査警告、生成日時を表示します。本文を取り込まないファイルも一覧の対象なので、選ぶと[理由表示](review:skills/walkthrough-review/assets/ui/app.js#L681)へ進みます。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-rows",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 213,
+      "end_line": 229,
+      "title": "圧縮ブロックから閲覧中ファイルの行を復元する",
+      "body": "保存データのblocksを、旧行番号・新行番号・差分種別・本文・末尾改行の有無を持つ行へ展開します。ブロック終端の改行を一つだけ外して分割するため、本文中の空行と「最終行に改行がない」の違いを保持できます。old_textがある特例は旧側の本文として残します。\n\n展開は選んだファイルに対して行い、blocksへ書き戻しません。この行配列が[行Mapと仮想表示](review:skills/walkthrough-review/assets/ui/app.js#L399)、[旧新を分ける質問文](review:skills/walkthrough-review/assets/ui/app.js#L766)の共通の参照元です。DOMを少なくしても行配列自体はファイル全文分を保持します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-cache",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 231,
+      "end_line": 247,
+      "title": "再訪時の色付けを容量付きで再利用する",
+      "body": "Prismの解析結果はパスをキーに保持し、再訪時にWorkerを起こさず使います。既存項目の更新では以前の文字数を引き、最大2ファイル・HTML文字列の合計800万文字以内になるまで古い項目を捨てます。単体で800万文字を超える結果は現在の表示には使い、キャッシュへは入れません。\n\n[参照時](review:skills/walkthrough-review/assets/ui/app.js#L256)に項目をMapの末尾へ移すので、最近使った結果が残ります。上限は文字数と件数であり、JavaScriptオブジェクトを含む実メモリー量の厳密な上限ではありません。静的スナップショット内の再訪を前提にしたパスキーです。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-highlight-job",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 249,
+      "end_line": 299,
+      "title": "色付けを非同期化し、切替後の結果を混ぜない",
+      "body": "埋め込まれたPrism込みソースからBlob Workerを作り、旧新の本文を分けて送ります。削除行がある場合は旧側も解析し、通常は新版だけを解析します。完了時は描画世代とWorkerの同一性を確認してから現在画面へ反映します。\n\nファイル切替・エラー・15秒のタイムアウトではWorkerを停止し、タイマーとBlob URLを解放します。Worker未対応や起動失敗、文法なしでもエスケープ済み本文が先に読めます。色付け後は画面内の行だけ塗り直し、末尾改行なしの表示を付けます。解析アルゴリズムは[Worker側](review:skills/walkthrough-review/assets/ui/highlight-worker.js#L2)に分かれています。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-virtual",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 301,
+      "end_line": 385,
+      "title": "行Mapと余白で全文位置を保ち、表示行だけDOMへ置く",
+      "body": "旧新それぞれの行番号Mapからコード上の配列位置を引き、解説範囲や選択範囲をDOMの有無に依存せず扱います。表示範囲はスクロール位置と固定行高から求め、上下20行を余分に用意します。範囲外の行を取り除き、共通する行のDOMは再利用します。\n\n上下のスペーサーが全文相当の高さを作り、過去に見えた横幅も維持して横スクロールの巻戻りを抑えます。取り除く行にフォーカスがあればコード領域へ移します。各行は旧新番号・差分記号・本文・質問ボタンを持ち、クリックは[親領域の一つのハンドラー](review:skills/walkthrough-review/assets/ui/app.js#L851)へ委譲します。\n\n本文データは全文を保持しますが、通常時のDOMは表示窓と前後の行だけです。そのためブラウザー標準のページ内検索や画面上のテキスト選択では、画面外を含むコード全文を検索・取得できるとは限りません。左の検索欄も[ファイルパスの絞込み](review:skills/walkthrough-review/assets/ui/app.js#L135)です。全文を文字として確認するには同梱のself-review.mdを利用できます。印刷前のイベントでは現在のファイルの窓を全行へ広げ、終了後に仮想表示へ戻します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-render",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 387,
+      "end_line": 443,
+      "title": "世代番号で描画切替を管理し、行高変更を追う",
+      "body": "ファイル選択時に行番号Mapとスペーサーを作り直し、行数・差分数・aria-busyを更新します。一度イベントループへ戻ってから描画し、描画世代が変わっていれば古い処理は終了します。保留中の行移動は新しい描画の完了後に適用し、最後に色付けを依頼します。\n\n画面サイズなどでCSSの行高が変わると、スクロール位置を旧行高から新行高の比率で換算し、表示行と解説アンカーを再計算します。これにより[25px/27pxのCSS](review:skills/walkthrough-review/assets/ui/style.css#L11)と仮想化の計算を揃えます。空ファイルは空状態を表示し、本文がない場合も読み込み中の表示を残しません。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-diagram",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 445,
+      "end_line": 487,
+      "title": "SVGを説明付き画像へ隔離し、失敗時も説明を残す",
+      "body": "図のタイトル・説明は文字列としてDOMへ置き、SVGはURLエンコードしたdata URLをimgへ渡します。SVG要素をページのDOMへ直接挿入せず、画像のaltにも説明を付けます。カード本文のMarkdown表示とは別の経路です。\n\n画像読込み後は高さが変わるため解説アンカーを計算し直します。SVG欠損や画像エラーなら画像を隠し、説明と失敗メッセージを残して拡大ボタンを無効にします。拡大画面では同じ図を再利用し、さらに拡大ボタンを付けないことでダイアログの多重起動を避けます。生成時のSVG入力検証と合わせて使う表示境界です。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-comments",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 489,
+      "end_line": 560,
+      "title": "解説カードを実在行へ結び、警告と質問を残す",
+      "body": "カードは旧新それぞれの開始行を表示順へ変換して並べます。Hash不一致・未照合・消失範囲・リンク警告を見える形で残し、範囲が消えた場合はコード移動を無効にしても解説と質問は残します。照合済みは注意枠を出さず、通常の説明を読み進められます。\n\n行範囲ボタンに加え、本文・見出し・余白のクリックでも対応行へ移動します。ただし子のリンク・質問・図拡大、既に処理されたイベント、文章選択中のクリックを優先し、コピーや別操作を奪いません。カードIDも移動先へ渡すため、同じ行を扱う複数カードを区別できます。activeカードの切替は画面内のコード強調へ反映します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-scrollmaps",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 562,
+      "end_line": 609,
+      "title": "カードの開始位置から双方向の対応表を作る",
+      "body": "各カードの開始行を固定行高からコード上の高さへ換算し、右側の実際のカード位置と対にします。仮想化で画面外のコード行DOMがなくても、この計算は可能です。消失範囲のカードはアンカーから除きます。\n\nmakeScrollMapsは各ペインで到達可能な範囲に位置を丸め、開始と末尾を結ぶ方向別の折れ線を作ります。同じコード行の複数カードでは右側から読んでいる間コードを同じ位置に保ち、コード側の同じ位置には最初の対応を採用します。末尾の対応を必ず各ペインの最下部へ置き、届かないカード位置が末尾移動を妨げないようにします。中間位置は線形補間します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-sync",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 611,
+      "end_line": 643,
+      "title": "連動スクロールの往復を抑え、現在のカードを追う",
+      "body": "スクロール元の位置からアクティブなカードを決め、連動が有効なら対応表で相手の位置を補間します。右ペインからの操作では実際のカード位置も使い、最下部では最後のカードを選びます。連動を切っていてもカードの選択状態は追従します。\n\nプログラムによる位置変更はstate.sourceで反射イベントを区別し、requestAnimationFrameへまとめて過剰な処理を抑えます。明示的な参照移動の直後は短時間の抑制期間を置き、スクロール連動が移動先を書き戻すのを防ぎます。画像や画面サイズの変更時には[対応表を再計算](review:skills/walkthrough-review/assets/ui/app.js#L596)する前提です。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-show",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 645,
+      "end_line": 698,
+      "title": "概要・本文・対象外を切り替え、古い閲覧状態を捨てる",
+      "body": "showは画面切替の中心です。世代番号を進め、実行中の色付けを取り消し、選択・保留移動・行配列を新しいパスへ切り替えます。本文対象ならコードと解説を描き、対象外や見つからないパスなら保存された一覧情報に応じた理由・状態・サイズを表示します。\n\n概要へ戻ると本文DOMとアンカーも消します。一覧の選択状態と親フォルダの展開、携帯画面のメニュー状態、読み上げ通知をまとめて更新します。本文対象外の選択を、本文があるように扱ったりレビュー済みと判断したりはしません。行付きの初回表示は[描画完了まで保留](review:skills/walkthrough-review/assets/ui/app.js#L438)します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-navigation",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 700,
+      "end_line": 752,
+      "title": "URLの範囲とカードIDを使って参照移動を再現する",
+      "body": "移動先をfile・line・side・end・commentのハッシュへ保存し、戻る/進むや同じ参照の再選択でも範囲へ移動します。同じファイル内なら全面再描画を避け、必要な仮想行を表示して行頭へ横スクロールを戻し、対象を強調します。\n\n解説を選ぶ際は有効範囲かつ同じ旧新版だけを候補にし、指定カードIDが範囲内なら優先します。指定がなければ範囲を含む最初のカード、その後に始まるカードを探します。同じ行を説明する2枚目が最初のカードへ戻る問題を避ける設計です。行がなければ読み上げ通知で知らせます。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-prompt",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 754,
+      "end_line": 821,
+      "title": "参照・版・照合結果を伴う質問文を作り、コピーする",
+      "body": "質問を開いた時点のファイルと行配列を保持し、指定範囲の旧新番号・差分記号・本文を質問文へ入れます。消失した解説範囲には無関係なコードを代入しません。パスを要素ごとにURLエンコードした参照、生成日時、両版Hash、解説の照合警告、本文以外の差分も残します。\n\n解説指定なら本文と図、行指定なら範囲が重なる解説の図、ファイル全体なら全図の説明とSVG全文を付けます。コードやSVG内の最長バッククォート列より長いフェンスを使い、質問文の構造が崩れるのを防ぎます。Clipboard APIが使えない場合は従来のコピーを試し、最後は全文選択と手動コピーの案内へ進みます。HTMLからAIへ自動送信する処理はありません。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-app-events",
+      "file": "skills/walkthrough-review/assets/ui/app.js",
+      "side": "new",
+      "start_line": 823,
+      "end_line": 923,
+      "title": "画面操作と参照リンクを初期化へ結ぶ",
+      "body": "検索・フィルタ・概要・モバイル一覧・連動切替・行質問・ダイアログを接続し、最後に概要、警告、対象外一覧、ツリー、URL参照の順に初期表示します。コード行クリックは親要素に委譲して、仮想化で行DOMが入れ替わっても機能します。\n\nレビュー内リンクは専用形式を解析してパスを復号し、対象ファイルであることを確認して旧新の行範囲へ移動します。検索ショートカットは入力中とダイアログ中を除外し、スキップリンクは現在のファイルを保って中央へフォーカスします。resize・ResizeObserver・図の読込みで連動位置を再計算し、印刷前に全行を出して印刷後に仮想表示へ戻します。\n",
+      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+    },
+    {
+      "id": "ui-worker",
+      "file": "skills/walkthrough-review/assets/ui/highlight-worker.js",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 21,
+      "title": "旧新を別々に色付けし、一行ずつ独立させる",
+      "body": "Workerは言語の別名をPrismの文法名に直し、sourcesの旧版・新版を別々に字句解析します。複数行文字列などでspanが改行をまたぐときは、開いているspanを次の行の先頭で開き直し、各行末を閉じます。これにより、画面が必要な行だけDOMへ置いても色付けの入れ子が崩れません。\n\n文法がない場合と解析例外はnullを返します。[呼出し側](review:skills/walkthrough-review/assets/ui/app.js#L256)は元の文字列表示を維持するため、色付けの失敗がコード閲覧を止めません。Worker自身はファイルやネットワークから追加データを取得しません。\n",
+      "code_hash": "b56c5de750bc4b834bec4b5efdd63df3e1fc6faf89a7843d54d58fd08ef94b60"
+    },
+    {
+      "id": "ui-style-frame",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 4,
+      "title": "独立したスクロール領域と照合状態の見た目",
+      "body": "色・等幅/本文フォントをCSS変数で揃え、ファイル一覧、中央、解説の三列を構成します。中央と右のflex子へmin-height:0を設定し、本文領域のoverflow:autoへスクロールを閉じ込めます。コードはwhite-space:preで横幅を保ち、追加・削除・選択範囲・解説の対象範囲を背景色で区別します。\n\n照合警告は画面上部とカード内に表示し、Hashの長い値は折り返せます。hidden属性を確実に非表示へ反映し、キーボードのfocus-visible、画面読み上げ専用テキスト、スキップリンクの表示も定義します。外部フォントの読込みは行いません。\n",
+      "code_hash": "230b3383a2f1b0de38b87eb43dd2bdd8826ad3004b621cfff0f71626410e695d"
+    },
+    {
+      "id": "ui-style-responsive",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "side": "new",
+      "start_line": 5,
+      "end_line": 12,
+      "title": "画面幅と仮想行高を揃える",
+      "body": "広い画面では三列を拡げ、950px以下ではファイル一覧を開閉式の固定パネルへ、650px以下ではコードと解説を縦に並べます。小さい画面では行質問ボタンを常時見せ、入力文字を16pxにして操作しやすくしています。動きを抑える設定にも対応します。\n\n仮想化は全行が同じ高さであることを前提にします。--code-row-heightを通常25px、1600px以上で27pxとし、行・行番号の高さを一致させます。[JavaScript](review:skills/walkthrough-review/assets/ui/app.js#L387)が同じ値を読み、幅変更時にスクロール位置とアンカーを再計算します。実ブラウザーでの文字・ズーム・狭幅表示の確認は、このCSSだけでは保証されません。\n",
+      "code_hash": "230b3383a2f1b0de38b87eb43dd2bdd8826ad3004b621cfff0f71626410e695d"
+    },
+    {
+      "id": "ui-style-diagrams-print",
+      "file": "skills/walkthrough-review/assets/ui/style.css",
+      "side": "new",
+      "start_line": 13,
+      "end_line": 16,
+      "title": "図の可読性と印刷時の全行表示を支える",
+      "body": "本文以外の差分は高さを制限したスクロール領域に、SVG図は説明文と画像枠に表示します。拡大ダイアログは最大1200px、ダイアログ内の画像は最小640pxとし、収まらない図を横スクロールで読めるようにしています。画像エラーの文章も専用の見た目を持ちます。\n\n印刷時はサイドバー、コードの操作バー、行質問、連動、図拡大などを隠し、表示ペインの高さ・overflow・コードの固定行高を解除して折り返します。行番号やカード内の質問ボタンを一律に消す指定ではありません。[beforeprint/afterprint](review:skills/walkthrough-review/assets/ui/app.js#L912)が閲覧中ファイルの全行を展開する処理と組み合わせます。全対象ファイルを巡回して印刷する機能はなく、ページ分割や最終的な印刷結果はブラウザー側の確認が必要です。\n",
+      "code_hash": "230b3383a2f1b0de38b87eb43dd2bdd8826ad3004b621cfff0f71626410e695d"
+    },
+    {
+      "id": "integration-authoring-read",
+      "file": "skills/walkthrough-review/references/card-authoring.md",
+      "start_line": 19,
+      "end_line": 58,
+      "title": "固定コードを小分けに読み、本文だけを1件ずつ渡す",
+      "body": "readは行数と本文文字数の両方に上限を持ち、長い1行もoffsetで続けて読みます。nextがなくなるまで進めることで、一部だけを見て全文確認済みと扱うことを避けます。\n\naddへ渡す中心はMarkdown本文と小さなメタ情報です。固定版のHash付与、JSONの引用符やSVG文字列のエスケープはツールが担当し、LLMが全カード配列を手書きする負担を減らします。\n\nIDは大小文字だけが異なる場合も重複として拒否します。担当名の表記も既存名へ合わせ、Windows上で同じ保存先を別名として上書きすることを防ぎます。\n",
+      "code_hash": "65af84a2a218b37a08fff0722986cb6bd3f9d2e2ab3133865a29280ebfdc2976",
+      "side": "new"
+    },
+    {
+      "id": "integration-authoring-checks",
+      "file": "skills/walkthrough-review/references/card-authoring.md",
+      "start_line": 60,
+      "end_line": 92,
+      "title": "個別修正と確認記録を対応付けて再開できるようにする",
+      "body": "statusは本文を再掲せず、showは一枚だけを取得します。updateは指定項目だけを変更し、removeはカードを退避して集約対象から外します。担当の分離は他担当のカードを誤って上書きしないためにも使われます。\n\nreviewedは現在のコードとカード集合に対する自己確認の申告です。カードを変えると記録も古くなり、再確認が必要になります。非空ファイルへ説明不要と判断した場合も理由を残し、単なる作業漏れと区別します。\n",
+      "code_hash": "65af84a2a218b37a08fff0722986cb6bd3f9d2e2ab3133865a29280ebfdc2976",
+      "side": "new"
+    },
+    {
+      "id": "integration-authoring-export",
+      "file": "skills/walkthrough-review/references/card-authoring.md",
+      "start_line": 94,
+      "end_line": 125,
+      "title": "確認済み集合だけを集約し、変更後は旧Hashを維持して引き継ぐ",
+      "body": "親が概要を統合し、全対象の確認記録とカード検証が揃った段階でexportします。mergeは概要と全コメントの置換なので、一枚だけの入力JSONを直接渡して既存説明を落とさない手順です。\n\n最終buildでコード変更が分かったら、新しいストアへ旧カードを保持して渡します。変更したコードへの再読と本文確認を経て明示的に再結合し、Hashだけを更新して不一致を隠さない方針になっています。\n",
+      "code_hash": "65af84a2a218b37a08fff0722986cb6bd3f9d2e2ab3133865a29280ebfdc2976",
+      "side": "new"
+    },
+    {
+      "id": "integration-delegation-scope",
+      "file": "skills/walkthrough-review/references/delegation.md",
+      "start_line": 3,
+      "end_line": 25,
+      "title": "保存はカード単位、分担は責務単位にする",
+      "body": "サブエージェントは利用可能・許可済みで独立範囲へ分ける効果がある場合に使います。親が共通の固定スナップショットを用意し、担当一覧とID接頭辞、完了条件を渡します。\n\nカード一枚ごとに起動したり、全コード・全JSONを親へ返させたりせず、各担当が局所的な文脈で確認します。総トークンが必ず減る保証ではなく、文脈の集中と取り違え防止を狙う設計です。\n",
+      "code_hash": "822271dbcadad4f053b33ac606bb06b082a4e5f57e3b6c57cf3730dbb79b3748",
+      "side": "new"
+    },
+    {
+      "id": "integration-delegation-integration",
+      "file": "skills/walkthrough-review/references/delegation.md",
+      "start_line": 47,
+      "end_line": 58,
+      "title": "分担しても全体の接続確認は親が引き受ける",
+      "body": "親は各担当の完了とstatusを照合し、未確認ファイル、対象外の扱い、説明の重複や矛盾を調べます。担当全体で全文・全カードを確認し、親は必要なカードだけを取得して横断的な接続を確かめます。\n\n最終buildとブラウザー確認も統合工程に含めます。担当が個々の形式検証を通しただけで、全体として完成したと判断しないための責任分担です。\n",
+      "code_hash": "822271dbcadad4f053b33ac606bb06b082a4e5f57e3b6c57cf3730dbb79b3748",
+      "side": "new"
+    },
+    {
+      "id": "integration-diff-acquisition",
+      "file": "skills/walkthrough-review/references/diff-review.md",
+      "start_line": 3,
+      "end_line": 13,
+      "title": "変更後プロジェクトと比較パッチの条件を揃える",
+      "body": "差分レビューも変更後のプロジェクト全体を入力にし、パッチだけから対象外を推測しません。Gitで取得する場合は比較元をコミットIDとして確定し、外部diff/textconvを無効にした引数配列で出力を作ります。\n\nHEADとの差分には通常、未追跡ファイルは含まれません。別途一覧を把握して本文対象へ入れ、追加色を付けるかどうかを明示する手順です。比較条件を揃えるために勝手にcheckout/resetすることは求めていません。\n",
+      "code_hash": "7d9abb234742a8abc0a5954a8228b8b0e4efc8285fe604be847c2a0e161ebc85",
+      "side": "new"
+    },
+    {
+      "id": "integration-diff-review-boundary",
+      "file": "skills/walkthrough-review/references/diff-review.md",
+      "start_line": 14,
+      "end_line": 21,
+      "title": "削除と付加情報を含め、検証できない差分を隠さない",
+      "body": "削除ファイルは旧パス、名称変更は新パスを使い、本文が変わらない権限変更も説明対象にします。既定取得の--no-renamesは移動を削除と追加へ分けますが、提供パッチのrename/copy情報は保持できます。\n\nパッチの変更後内容と実ファイルが合わなければ取り直します。バイナリや非UTF-8等の非対応差分は黙って捨てず、対象範囲と制約を伝える方針です。\n",
+      "code_hash": "7d9abb234742a8abc0a5954a8228b8b0e4efc8285fe604be847c2a0e161ebc85",
+      "side": "new"
+    },
+    {
+      "id": "integration-comment-input",
+      "file": "skills/walkthrough-review/references/input-format.md",
+      "start_line": 25,
+      "end_line": 33,
+      "title": "カードの位置・版・Hashと内部参照を明示する",
+      "body": "一意なID、対象ファイル、両端を含む行範囲、new/oldの版、作成時コードHashをカードの根拠にします。通常はカードツールが固定版からHashを記録し、LLMが64桁を転記する必要はありません。\n\n内部リンクは対象パスと新旧の行番号を指定し、本文対象に含めた実在行だけを指します。mergeは全体置換なので、保存済みカード集合をexportしたJSONを使うことが前提です。\n",
+      "code_hash": "560b08c44c84ce89429129600689611a53f4a61af61083622c9694176a3a50f7",
+      "side": "new"
+    },
+    {
+      "id": "integration-comment-rebuild",
+      "file": "skills/walkthrough-review/references/input-format.md",
+      "start_line": 35,
+      "end_line": 51,
+      "title": "再生成時の不一致を説明更新の手掛かりにする",
+      "body": "同じ出力先のbuildは旧説明とその作成時Hashを保ち、新しいコードと照合します。範囲消失や対象外の説明は、近い行へ自動で付け替えず、警告として再確認します。\n\nmergeやブラウザーの再読み込みだけでは元コードの変更は検出しません。正規化全文のHashは末尾改行も含めて比較し、一致しても説明や図の意味が正しいことまでは保証しません。\n",
+      "code_hash": "560b08c44c84ce89429129600689611a53f4a61af61083622c9694176a3a50f7",
+      "side": "new"
+    },
+    {
+      "id": "integration-svg-input-boundary",
+      "file": "skills/walkthrough-review/references/svg-diagrams.md",
+      "start_line": 5,
+      "end_line": 49,
+      "title": "カード所有の静的SVGを許可された表現へ限定する",
+      "body": "図はカードのdiagramsへタイトル・説明・SVGとして添え、本文へ生のSVGを混ぜません。所属するカードと同じファイル・行範囲・版・Hashに対応させます。\n\n有限の正しいviewBox、許可要素・属性、図内で完結するID参照を使います。script、イベント、外部素材、CSS等を除去して通すのではなく、入力エラーとして拒否する契約です。視覚的に正しい図かどうかは、この形式検証とは別に確認します。\n",
+      "code_hash": "3c85c3953341ee6b7dcf76601c906725ceb1dd9a9255b0375c0fe9f873d55f08",
+      "side": "new"
+    },
+    {
+      "id": "integration-svg-semantic-check",
+      "file": "skills/walkthrough-review/references/svg-diagrams.md",
+      "start_line": 51,
+      "end_line": 57,
+      "title": "矢印の意味と再生成・質問への引継ぎを確認する",
+      "body": "ノードと矢印を処理・条件・値へ対応させ、文章で省略した前提や推測を明示します。自己確認資料には説明とSVG全文が残るため、旧新の区別、分岐条件、実行順をソースと照合できます。\n\n表示では文字切れや線の重なり、カードを含むスクロール連動まで確かめます。再buildや質問文にも図が残るので、コード変更時は本文だけでなく図も読み直します。\n",
+      "code_hash": "3c85c3953341ee6b7dcf76601c906725ceb1dd9a9255b0375c0fe9f873d55f08",
+      "side": "new"
+    },
+    {
+      "id": "integration-third-party-provenance",
+      "file": "skills/walkthrough-review/references/third-party-notices.md",
+      "start_line": 1,
+      "end_line": 10,
+      "title": "同梱版とライセンス・取得履歴への入口",
+      "body": "Prism 1.30.0とMarked 18.1.1の同梱版を示し、各ライセンスとversions.jsonへ案内します。これらは開発時に[素材取得ツール](review:dev/tools/vendor_assets.py#L19)で用意し、生成や閲覧時にCDNから取得しません。\n\nMarkdown変換結果の制限はUIの別工程です。ライブラリを同梱していること自体が、入力の安全性や説明内容の正しさを証明するものではありません。\n",
+      "code_hash": "ee28fb55b9bc5c15bf8a8f612e1684e4dd92abc1901e8eb2a76954b258dc2110",
+      "side": "new"
+    },
+    {
+      "id": "python-cards-storage",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 29,
+      "end_line": 103,
+      "title": "ストア更新の排他と個別保存",
+      "body": "カード作成ストアは、レビューを説明している途中に複数の担当が更新する場所です。`checked` は保存先と祖先のリンク・Windows再解析ポイントを拒否し、`token` は担当名やIDを安全なファイル名に制限します。英数字から始まるASCIIの1〜64文字に限り、Windows予約名も受け付けません。大小文字だけが違うID・担当名の衝突は[読込時の照合](review:skills/walkthrough-review/scripts/comment_cards.py#L150)で別途拒否します。\n\n更新はOSのファイルロックで直列化します。Windowsでは先頭1バイト、他のOSではファイル全体をロックし、取得できなければ最大10秒でエラーにします。プロセス終了時にもOSがロックを解放するため、古いロックファイルが残ってもそれだけで更新不能にはなりません。\n\nJSONは同じフォルダの固有一時ファイルへ書き終えてから置換します。これで読者に書きかけのJSONを見せることを避けますが、複数ファイルを一括で確定する仕組みや停電時の永続化保証ではありません。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-snapshot",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 106,
+      "end_line": 147,
+      "title": "説明する本文と比較条件の固定",
+      "body": "ストアは「どの本文・比較条件を説明しているか」を固定します。旧新本文から再計算したHash、対象パス、旧パス、差分メタデータ、プロジェクト、モードをまとめて識別値を作ります。概要・解説・生成日時の更新は識別値を変えません。\n\n各操作の `bind` は現在の `review.json` と保存済み識別値を比較し、一致した対象と旧新の総行数からカード・リンク検証用の索引を作ります。再buildでコードや比較条件が変わっていれば旧ストアへの更新を止め、新しい保存先への引継ぎを促します。また `snapshot` は固定JSON自身の元バイト列Hashを確認してから復元するため、固定本文が書き換わった場合も読み進めません。\n\nここでいう「現在」は成果物の `review.json` です。元プロジェクトを監視する処理ではなく、その変更を検出するには[buildを再実行](review:skills/walkthrough-review/scripts/walkthrough.py#L1164)する必要があります。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-identities",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 150,
+      "end_line": 182,
+      "title": "大小文字が異なる保存名の衝突を拒否",
+      "body": "担当フォルダとカードIDはファイル名にも使うため、OSごとの大文字小文字の扱いで別カードが上書きされないようにします。`owner_folder` は既存担当名と大小文字だけ違う指定を拒否し、読み取り・更新・削除のどれでも元の表記へそろえることを要求します。\n\n`cards` は全担当フォルダを読む際にも大小文字を同一視した担当名集合とID集合を作ります。同一IDを別担当へ置いた場合や手動で大小文字だけ違うファイルを増やした場合も検出し、JSON内IDとファイル名の完全一致、担当直下のディレクトリ構成、各経路のリンクも確認します。大小文字を区別するOS上で作ったストアをWindowsへ移す場合の衝突も考慮した検証です。\n\nここで行うのは保存構造と識別子の検査です。対象・版・行・本文・Hashという入力内容と参照先の検証は[個別保存](review:skills/walkthrough-review/scripts/comment_cards.py#L237)と[共通カード検証](review:skills/walkthrough-review/scripts/walkthrough.py#L703)に続きます。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-init",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 185,
+      "end_line": 234,
+      "title": "初期化・再開・新版への引継ぎ",
+      "body": "`init` は生成済みレビューを、固定スナップショット・担当別カード・確認記録を持つストアに変換します。ストアは元プロジェクトとレビュー出力の外へ置き、無関係な既存フォルダの流用を拒否します。同じレビュー用のストアならカードを保持したまま再開できます。\n\n通常はレビュー内の既存解説を `existing` 担当へ取り込み、`--from-store` では同じプロジェクトの旧ストアから概要とカードを引き継ぎます。IDは大小文字を同一視して重複を保存先作成前に調べます。たとえば `python-Item` と `python-item` を別名で取り込み、Windowsで同じ保存先を上書きすることを防ぎます。カードは入力項目だけを残します。作成時Hashは引継ぎ時に最新化せず、確認記録も引き継ぎません。\n\nこのためコード変更後の引継ぎは「旧解説を失わず、新版で再確認する」状態から始まります。新しいコードを読まずにHashだけ一致させる経路にはしません。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-put",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 237,
+      "end_line": 288,
+      "title": "担当別カードの安全な更新と退避",
+      "body": "カードは1件ずつ保存し、更新時は指定項目だけを既存カードへ重ねます。全担当のカードを大小文字を無視したIDで検索し、新規IDが既存IDと大小文字だけ違う場合も拒否します。更新は担当名とIDの両方が保存時の表記まで一致する必要があり、他担当への上書きや名前の意図しない変更を防ぎます。新規IDは担当名とハイフンから始めます。\n\n`code_hash` は入力として受け取らず、固定本文から取得します。Hashの比較では16進数の大小文字を同一視するため、大文字で記録したHashも同じ本文なら一致し、保存時も元の表記を保持します。コードが本当に違う更新では本文の再指定と `--confirm-code` の両方を必須にし、再確認を明示した後だけ現版Hashを記録します。その後[共通カード検証](review:skills/walkthrough-review/scripts/walkthrough.py#L703)で対象・行・リンク・図を確認し、警告があれば保存しません。\n\n削除も担当フォルダと保存済みIDの表記を確認してから、`removed/` へ固有名で退避します。集約対象から外しつつ元カードを残し、追加・修正・削除による内容変更は従来のファイル確認記録を古い状態にします。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-checks",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 302,
+      "end_line": 362,
+      "title": "内容に結び付いた確認記録",
+      "body": "確認記録はファイル単位で、固定スナップショットIDと、そのファイルの全カードをID順にまとめたダイジェストに結び付きます。本文・範囲・図などカードの入力全体がダイジェストに入るため、後から別担当がカードを足した場合も内容が変わり、`status` は再確認が必要な状態へ戻します。\n\n`reviewed` は対象ファイルの全カードを検証してから記録します。非空ファイルにカードがない場合は理由が必須で、空ファイルと説明不要と判断したファイルを区別できます。状態計算では確認記録が現版に一致していてもカードに検証警告があれば確認済みとしません。\n\nこれは担当が全文・全カードを確認したという申告を、確認時点のデータへ結び付ける仕組みです。何行読んだかを追跡したり、日本語の説明の正しさや十分さを自動判定したりする保証ではありません。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-read",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 365,
+      "end_line": 406,
+      "title": "長い行にも対応する固定本文の分割読出し",
+      "body": "`read` は元プロジェクトではなく、改変検査を通った固定スナップショットから、指定した旧版・新版の本文を返します。旧版ではBOM正規化の例外となる `old_text` を優先し、表示行番号と末尾改行の情報も保持します。\n\n一度の応答は最大200行・20000文字に制限されます。1行が文字上限を超える場合も途中で切り、`line_complete` と次の `start` / `offset` を返します。呼出側は `next` がなくなるまで追うことで長い1行を含む全文を読めます。行末を超える文字位置や対象外ファイルなどはエラーです。\n\n応答には本文Hashと本文以外の差分要約も付くため、説明する版と権限・名称変更などを同時に確認できます。分割読出し自体はカード確認記録を付けません。`show` は担当名とIDの保存表記も照合してからカード1件のHash・範囲・リンク状態を再計算し、警告とともに返します。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-export",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 409,
+      "end_line": 432,
+      "title": "確認済みカードだけを一括集約",
+      "body": "`export` は個別作成とHTML生成の間にある集約の関門です。ロック中に全カードとファイル別確認状態を読み、未確認またはカード変更後のファイルが一つでもあれば出力しません。概要も空では保存できず、最後の通常マージ検証では概要の内部リンクも確認します。\n\n全カードを対象順・版・開始行・IDで決定的に並べ、固定スナップショットへ[通常のマージ検証](review:skills/walkthrough-review/scripts/walkthrough.py#L783)を試します。Hash警告や対象を失ったカードがあれば集約JSONの置換前に止めます。保存先は元プロジェクト、ストア内部、元の `review.json` を避けます。\n\n成功時に書くのは概要と全カードの入力JSONだけです。HTML一式は後続の `walkthrough.py merge` が更新するため、カード1件の作成ごとに全成果物を再生成する必要がありません。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-cards-cli",
+      "file": "skills/walkthrough-review/scripts/comment_cards.py",
+      "side": "new",
+      "start_line": 435,
+      "end_line": 507,
+      "title": "小さな操作で作成から集約まで進めるCLI",
+      "body": "このCLIは準備済みレビューへの `init` から、個別カードの作成・修正・読出し・確認、最後の集約までを小さな操作として公開します。本文Markdownと図のSVG・説明をUTF-8ファイルから読み、作成時Hashを人間やAIに転記させずにストアへ渡します。\n\n図を指定する場合は題名と説明ファイルが必須です。図の削除と追加の同時指定、SVGなしの図メタ情報など、曖昧な要求は保存前に拒否します。`--confirm-code` は更新要求へ渡されますが、変更済みコードを確認した本文の指定も必要です。各操作は小さな結果JSONを標準出力に返し、想定する入出力・入力検証エラーは標準エラーと終了コード2で知らせます。\n\n実行時だけ標準出力・標準エラーをUTF-8へ設定し、import時にはCLIを起動しません。呼出側は成功したコマンド名だけでなく、終了コードと返った確認状態を使って次の工程を決められます。\n",
+      "code_hash": "c5f60dd5469d15e39c47d5713b7a756e1f0af2f86f4768270e416d9f5d534b33"
+    },
+    {
+      "id": "python-diff-contract",
+      "file": "skills/walkthrough-review/scripts/diff_parser.py",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 26,
+      "title": "差分と現在本文から全表示行を復元する契約",
+      "body": "このモジュールはファイルを開かず、差分文字列と変更後の本文から表示用の行データを作ります。パッチにない未変更部分は現在の全文から補い、パッチにある追加行・前後行は現在の本文と照合します。削除行はパッチの記述を根拠に復元するため、旧実ファイルと一致することを確認する処理ではありません。\n\n各表示行は旧番号・新番号・区分・本文・末尾改行の有無を持ちます。追加行の旧番号と削除行の新番号は `None` です。これが[本体のブロック保存](review:skills/walkthrough-review/scripts/walkthrough.py#L312)、旧新版Hash、画面の行参照に共通する材料になります。\n\n解析と行復元にはリスト版と反復版があり、反復版は全ファイル・全行を蓄積せず渡せます。ただし最後まで消費して初めて全入力の検査が終わります。旧新の先頭BOMだけを版ごとに除き、必要時の `old_text` で旧版復元とHashにも正規化の違いを伝えます。不正形式を黙って除外して部分的に成功する設計ではありません。\n",
+      "code_hash": "5bf5f6df53af739342eda400897a73b3a1511e2c1d7387357464e82dc51436ea"
+    },
+    {
+      "id": "python-diff-paths",
+      "file": "skills/walkthrough-review/scripts/diff_parser.py",
+      "side": "new",
+      "start_line": 42,
+      "end_line": 247,
+      "title": "Gitパスの復号と相対パスの厳密な解釈",
+      "body": "差分ヘッダの名前は実ファイルを読む前に解釈します。Gitの引用パスはC形式エスケープをバイト列へ戻してUTF-8で復号するため、日本語の八進数表記も複数バイトをまとめて扱えます。不明なエスケープ、閉じない引用、複数の境界候補が残る空白入りパスは推測せず拒否します。\n\n`_git_paths` は旧 `a/`・新 `b/` の組を暫定的に接頭辞と判断します。しかし `--no-prefix` で実ディレクトリ `a/file` を `b/file` へrename/copyする場合も、ヘッダだけでは同じ形になります。`_entry_git_paths` はrenameまたはcopyのfrom/toが接頭辞を外す前の両パスと完全一致した場合だけ、実名として `a/`・`b/` を復元し、接頭辞なしと確定します。片側だけ・一致しないメタデータは補正せず、[ファイル確定時の検証](review:skills/walkthrough-review/scripts/diff_parser.py#L371)へ残します。\n\n確定した接頭辞の判断は `---` / `+++` にも引き継ぎ、本文ヘッダあり・hunkなしのどちらでも同じ実名を扱います。日時欄はタブで分離し、`/dev/null` は版がないことを示す `None` にします。復号後は相対の `/` 区切りだけを許し、絶対指定、ドライブ・代替ストリーム、親移動、空要素、制御文字を拒否します。存在やリンクの確認は[本体側の実アクセス](review:skills/walkthrough-review/scripts/walkthrough.py#L237)が担当します。\n",
+      "code_hash": "5bf5f6df53af739342eda400897a73b3a1511e2c1d7387357464e82dc51436ea"
+    },
+    {
+      "id": "python-diff-hunks",
+      "file": "skills/walkthrough-review/scripts/diff_parser.py",
+      "side": "new",
+      "start_line": 250,
+      "end_line": 368,
+      "title": "変更範囲の行数と旧新座標の整合",
+      "body": "`_PatchLines` はLFで一行だけ先読みし、改行直前のCRだけを除きます。変更範囲を表すhunkは、ヘッダが宣言する旧行数・新行数と本文記号を照合します。前後行は双方、追加は新側、削除は旧側だけに数え、過不足や未知の記号はエラーにします。「末尾改行なし」マーカーは直前の本文行へ情報を付け、行数には数えません。二重指定や本文行なしの指定も拒否します。\n\n複数hunkは、旧新それぞれの範囲が逆順・重複しないことと、その間にある未変更部分の行数が一致することを確認します。行数が正なら開始行から1を引いた配列位置、行数0なら指定行の後ろの境界として扱うため、先頭挿入の `-0,0` も区別できます。\n\nこの段階が保証するのは差分自身の行数と座標の整合です。現在のファイル範囲に収まるか、本文や末尾改行が実コードと同じかは[行復元時](review:skills/walkthrough-review/scripts/diff_parser.py#L646)に確認します。\n",
+      "code_hash": "5bf5f6df53af739342eda400897a73b3a1511e2c1d7387357464e82dc51436ea"
+    },
+    {
+      "id": "python-diff-metadata",
+      "file": "skills/walkthrough-review/scripts/diff_parser.py",
+      "side": "new",
+      "start_line": 371,
+      "end_line": 441,
+      "title": "本文以外のファイル変更を確定する",
+      "body": "1ファイルの解析を確定する際、[rename/copyから確定したGitパス](review:skills/walkthrough-review/scripts/diff_parser.py#L203)を使い、Gitヘッダと本文ヘッダの名前、追加・削除の存在状態、rename/copyの移動元・先、権限の旧新を突き合わせます。名称変更や空ファイル追加、権限だけの変更は本文hunkがなくても成立するため、意味のある変更メタデータがある場合は受け付けます。\n\nrename/copyの片側だけ、両操作の同時指定、旧権限だけなどは拒否します。indexや類似度だけでは実際の変更を確定できないため、hunkも意味のある変更情報もない項目は受け付けません。返したentryは文字列・辞書の情報であり、実ファイルの名称や権限を変更する操作はありません。\n\n本文行に現れない情報は[本体の差分要約](review:skills/walkthrough-review/scripts/walkthrough.py#L406)へ渡されます。この経路により「コード行に差がないから変更なし」と見落とさず、名称・複製・権限も資料に残せます。\n",
+      "code_hash": "5bf5f6df53af739342eda400897a73b3a1511e2c1d7387357464e82dc51436ea"
+    },
+    {
+      "id": "python-diff-parser",
+      "file": "skills/walkthrough-review/scripts/diff_parser.py",
+      "side": "new",
+      "start_line": 444,
+      "end_line": 583,
+      "title": "未知形式を拒否してファイル単位に解析",
+      "body": "パーサーは1行先読みで、Gitヘッダ、旧新本文ヘッダ、メタデータ、hunkを順番に受け付けます。次のファイルへ移る前に前ファイルを確定し、最後のファイルも終端で検査します。本文ヘッダがないhunk、未知行、重複メタデータ、binary/combined形式は明示的なエラーです。\n\nメタデータはGitヘッダと本文ヘッダの間にだけ許します。本文ヘッダを読む時点でも `_entry_git_paths` を通すため、先に読んだrename/copy情報に従って実ディレクトリ名と接頭辞を区別します。権限は6桁八進数、類似度は0〜100%、indexはオブジェクトIDの旧新表記を検査しますが、Gitへ問い合わせてその値の実在性を確かめる処理ではありません。\n\n`iter_patch` は旧・新・表示名の衝突も検出します。同じ旧ファイルから複数先へのコピーは許容し、同じ変更対象や表示キーを二重に作る入力は拒否します。途中までの反復では後続の不正を検出できないため、[本体](review:skills/walkthrough-review/scripts/walkthrough.py#L468)は対象外の変更も含め全件を消費します。\n",
+      "code_hash": "5bf5f6df53af739342eda400897a73b3a1511e2c1d7387357464e82dc51436ea"
+    },
+    {
+      "id": "python-diff-rows",
+      "file": "skills/walkthrough-review/scripts/diff_parser.py",
+      "side": "new",
+      "start_line": 586,
+      "end_line": 705,
+      "title": "現在本文との照合と省略部分の補完",
+      "body": "変更後本文はLFで分割し、末尾の空要素を余分な行と数えず、各行と末尾改行の組へ分解します。そのうえでhunk間・最後のhunk以降の未変更行もすべて補います。hunk内の前後行と追加行は、現在の同じ位置の本文・末尾改行が両方一致しなければ拒否します。削除行は旧側番号だけを進め、新版から落ちた位置も資料上に残します。\n\n削除指定では `None` と存在する空ファイルを区別し、新側本文が渡ればエラーにします。旧総行数を現在行数とhunkの増減から算出し、新規ファイルにパッチ外の行が残る場合も検出します。削除済みファイルの部分hunkを、旧全文が分かったことにして通すことも避けます。\n\n旧側の改行なしマーカーは旧最終行にだけ許し、新側は現在本文との一致で検査します。これらは行番号だけが合う誤った差分を防ぐ保証であり、パッチの削除本文を旧実ファイルで裏付ける保証ではありません。\n",
+      "code_hash": "5bf5f6df53af739342eda400897a73b3a1511e2c1d7387357464e82dc51436ea"
+    },
+    {
+      "id": "python-diff-bom",
+      "file": "skills/walkthrough-review/scripts/diff_parser.py",
+      "side": "new",
+      "start_line": 706,
+      "end_line": 722,
+      "title": "版ごとの先頭BOMを正しく正規化",
+      "body": "BOMは差分本文と現在コードの照合が終わるまで残し、その後、旧新それぞれの1行目から先頭の一つだけを除去します。途中行の同じ文字や二重BOMの二つ目まで一括削除することはありません。\n\n先頭への行追加・削除によって同じ前後行が片方では1行目、もう片方では途中行になると、旧新でBOM除去の結果が異なります。その場合だけ `old_text` を別に持たせ、新版の表示本文を流用して旧版を誤復元しないようにします。\n\n追加行・削除行・文脈行の各旧新番号から先頭を判断し、この例外情報を[ブロック保存と旧版復元](review:skills/walkthrough-review/scripts/walkthrough.py#L312)まで保持することで、文脈行のない差分でも旧版Hashを正しく計算できます。\n",
+      "code_hash": "5bf5f6df53af739342eda400897a73b3a1511e2c1d7387357464e82dc51436ea"
+    },
+    {
+      "id": "python-prepare-location",
+      "file": "skills/walkthrough-review/scripts/prepare_review.py",
+      "side": "new",
+      "start_line": 26,
+      "end_line": 67,
+      "title": "対象の確定と衝突しない外部作業先",
+      "body": "準備処理は、対象プロジェクトと作業先を先に確定します。プロジェクト省略時は現在の作業ディレクトリを使い、ツールの配置先から対象を推測しません。指定対象がフォルダでなければ失敗します。\n\n既定ではOS一時領域に専用の出力親を置き、指定した場合はその経路を使います。リンクやWindows再解析ポイントは実体へ解決する前に調べ、作業先がプロジェクト自身または配下になる場合も拒否します。生成物が次回走査へ混ざることを避けるためです。\n\n[全件走査](review:skills/walkthrough-review/scripts/walkthrough.py#L158)を先に終えてから固有名の作業フォルダを作るので、対象不正による空フォルダの増殖を抑え、既存成果物も上書きしません。OS一時領域は後に清掃され得るため、完成後の永続保存先は別に扱う必要があります。\n",
+      "code_hash": "196f2b494b4203c0cd73e50b2e800f0a1ee292b62bb2f59d0464d830e0e2175d"
+    },
+    {
+      "id": "python-prepare-session",
+      "file": "skills/walkthrough-review/scripts/prepare_review.py",
+      "side": "new",
+      "start_line": 68,
+      "end_line": 109,
+      "title": "後続工程へ絶対パスのセッションを渡す",
+      "body": "準備の成果物は全件一覧の `inventory.json` と、後続処理が使う絶対パスをまとめた `session.json` です。CLIとカードCLIはスキル自身の場所、対象・解説入力・カードストア・HTMLは固有作業フォルダから組み立てます。スキル一式を移しても元リポジトリ内の実装へ依存しません。\n\n`targets`、`comments`、`review_dir`、`index` は保存予定先を示すだけで、この段階では作成しません。ファイルの対象選定、本文取込、解説、マージ、自己確認は後続工程です。準備コマンドの成功だけでレビュー完成にはなりません。\n\n保存するJSONはUTF-8・LFに統一し、CLIも成功時はセッションJSONを返します。想定する入出力・検証失敗は標準エラーへ日本語で出し、終了コード2を返すため、自動実行側は結果を読み取って継続または再試行できます。\n",
+      "code_hash": "196f2b494b4203c0cd73e50b2e800f0a1ee292b62bb2f59d0464d830e0e2175d"
+    },
+    {
+      "id": "python-main-inventory",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 130,
+      "end_line": 221,
+      "title": "対象外も根拠を残す全件走査",
+      "body": "全件走査は対象選定の根拠を作ります。スタックで通常フォルダをたどり、通常ファイル、リンク、特殊ファイル、読取不能項目を相対パス順の一覧に残します。隠しファイルや `.git` も名前だけでは除外せず、リンク先は追跡しません。フォルダを読めない場合はその場所とエラーを記録し、ほかの走査を続けます。\n\n本文はまだ読まず、サイズと状態だけを採ります。このため通常ファイルという一覧状態はUTF-8本文の取込成功を意味しません。また読取不能フォルダの内部は個別列挙できないため、警告がある走査を完全な一覧と扱うことはできません。\n\nGitが使える場合だけ `check-ignore` へNUL区切りで一覧を渡し、無視対象の補助情報を付けます。Git不在・失敗・15秒タイムアウト時もレビューは継続します。この情報は画面の対象外一覧を絞るためで、本文対象の自動除外や走査省略には使いません。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-source",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 237,
+      "end_line": 281,
+      "title": "実ファイルの読込と用途別の正規化",
+      "body": "コード本文はAIの転記を経由せず実ファイルから取得します。相対パスの書式、対象と親経路のリンク、プロジェクト内の通常ファイルであることを確かめたうえで、全文をバイト列として読みます。UTF-8で復号できない内容とNULを含む内容は対象にできません。\n\n戻り値は、表示用のBOM除去・LF正規化本文、正規化前バイト列のSHA-256、BOMを残してLFだけそろえた差分照合本文の3種類です。元バイト列の識別と解説用の本文一致を混同せず、末尾改行の有無も保持します。\n\n読取前後で更新時刻とサイズを比較し、途中変更が見えれば再実行を促します。ただし同じ時刻・同じサイズの書換えまで検知する保証や、ファイル操作との完全な競合排除ではありません。元プロジェクトへの書込みは行いません。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-blocks",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 312,
+      "end_line": 403,
+      "title": "本文を一つに保つブロック保存と復元",
+      "body": "保存本文は行ごとの巨大な配列ではなく、同じ区分で旧新番号が連続する範囲をまとめた `blocks` だけに置きます。開始行と改行を含む本文から番号を復元できるため、同じ全文と行配列を併せて保存する重複を避けます。BOMの旧新例外 `old_text` は必要な1行だけの別ブロックにします。\n\n読出しの `iter_rows` は区分と片側番号の有無、各版の番号連続性、改行なし行の後に行が続かないこと、旧版例外の形を検査します。不正な保存本文はそこで拒否し、利用側が曖昧な行番号で説明を結び付けることを避けます。\n\n`file_text` が版ごとの全文を復元し、`update_code_hashes` はブロックを検査してから旧新それぞれのHashを計算します。Hashはコメント範囲だけでなく、その版のファイル全文に対応します。これが[カードの版固定](review:skills/walkthrough-review/scripts/comment_cards.py#L106)と再build時の照合の土台です。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-targets",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 429,
+      "end_line": 464,
+      "title": "対象指定の検証と全体・差分モードの選択",
+      "body": "`create_review` は入力の対象JSONから、解説が空のレビュー辞書を作る中心処理です。`files` 配列、任意の非空題名、相対パス、重複の有無を検査し、未定義キーも拒否するため、設定の綴り違いが黙って無視されません。\n\n対象だけを読む前に、全体・差分のどちらも[全件走査](review:skills/walkthrough-review/scripts/walkthrough.py#L158)します。その一覧に対象指定を突き合わせ、対象外を含む範囲の根拠を残します。対象の本文採用順は入力配列の順です。\n\n`patch_text` が `None` のときだけ全体モード、文字列なら空文字列でも差分モードです。したがって「空の差分」と「差分を指定しなかった全体レビュー」を取り違えません。この関数は元プロジェクトを読んで新しい辞書を組み立てるだけで、成果物の保存は[write_review](review:skills/walkthrough-review/scripts/walkthrough.py#L1064)に任せます。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-diff",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 468,
+      "end_line": 506,
+      "title": "選択外も含め差分全体を現在本文と照合",
+      "body": "差分モードでは対象指定でパッチを間引く前に、全entryを[差分パーサー](review:skills/walkthrough-review/scripts/diff_parser.py#L556)で検査し、変更後本文と照合します。対象外ファイルでも不一致を見逃さず、反復を最後まで消費します。ただし対象外の本文は検証後に保持せず、成果物に混ぜません。\n\n削除ファイルは現在の一覧に同名項目がないことを確認し、削除済み状態として一覧へ補います。それ以外は現在の通常ファイルが必要です。表示名は原則新パス、削除だけ旧パスを使い、旧パスや権限などは別のメタ情報として残します。\n\n選択対象の行は解析直後にブロック化し、新版を復元した本文が実読込本文と同じことも検査します。パッチ全体の行辞書を保持し続けず、選択本文と必要なヘッダだけを残すことで、全変更を検証しながら不要なデータ蓄積を抑えます。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-model",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 507,
+      "end_line": 559,
+      "title": "対象本文と走査状態をschema v2へまとめる",
+      "body": "対象ファイルごとに言語、元バイト列Hash、唯一の本文 `blocks`、旧パス・差分要約、空のコメント配列を作ります。全体モードや差分に現れない対象は現在全文を一つのcontextブロックにし、旧新を同じ本文として扱います。空ファイルは空ブロック配列です。\n\n削除ファイルでは新版は空、元バイト列Hashは存在しないため `None` とし、旧版は差分から復元した本文を保持します。いずれも旧新の本文Hashを計算し、読込本文とブロック復元の一致を確認します。\n\n返すschema v2データには全件一覧、選択本文、UTC生成時刻、走査警告を含めます。リンクや読取不能項目は一覧だけでなく警告にも残します。初回の概要・解説・照合警告は空なので、build成功後にカード作成・マージ・自己確認を続ける必要があります。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-links",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 562,
+      "end_line": 589,
+      "title": "実在する対象版の行だけへ内部リンクを結ぶ",
+      "body": "概要やカードの内部リンクは、選択済み本文の実在行へだけ結び付きます。HTML文字参照を復号して大文字小文字を区別せず参照を探し、最後の `#` から新版L・旧版Oの1以上の行番号を読みます。パスはURL復号を1回だけ行い、相対パス規則でも検査します。\n\n対象外ファイルや存在しない版・行へのリンクは、元プロジェクトにファイルがあってもエラーです。画面内で開ける根拠がある参照だけを受け付けるためです。空白などの区切り文字をパスに含める場合はURLエンコードが必要です。\n\nMarkdown全体を構文解析する検査ではないため、コード表記内の参照文字列も検査されます。再buildで古い参照を保持する場合やHash不一致の旧解説では、[マージ処理](review:skills/walkthrough-review/scripts/walkthrough.py#L783)が無効リンクを警告へ変換して再確認を促します。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-svg",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 618,
+      "end_line": 683,
+      "title": "実行や外部参照を持たない静的SVGだけを許可",
+      "body": "解説図は単なる任意HTMLではなく、静的SVGに限定して検証します。XMLとして読めること、SVG名前空間のルート、有限数4個のviewBoxと正の幅・高さを確かめ、DOCTYPE・ENTITY・処理命令は解析前に拒否します。\n\n要素と属性は許可一覧だけを認めます。実行属性や外部素材の入口を削って黙認するのではなく、許可外の図全体をエラーにします。`url(#id)` は指定属性の完全な内部参照だけを許し、ID重複や参照先欠損、外部URL・未対応参照も拒否します。\n\n図配列の各要素には題名・説明・SVGが必須です。この検査は構造と許可機能の確認であり、文字が枠内に収まるか、矢印が処理の意味と一致するかまでは判定しません。そのため説明とSVG全文の自己確認に加え、表示時の確認も必要です。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-comment",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 703,
+      "end_line": 780,
+      "title": "カードの形式・全文Hash・行参照を別々に検証",
+      "body": "カード検証は作成CLIとマージで共用します。必須項目・未定義項目、全体で表記まで同じIDが重複しないこと、対象パス、旧新指定、整数の行範囲、非空の題名・本文、任意の図を検査します。Pythonで整数の派生型になる真偽値も、行番号としては拒否します。保存ストアではさらに[大小文字だけ違うIDの衝突](review:skills/walkthrough-review/scripts/comment_cards.py#L150)も拒否するため、ファイル名の同一性は別途保証されます。\n\n作成時Hashは64桁16進数の大小文字を同一視して対象版のファイル全文Hashと比較し、未記録・一致・不一致を分けます。大文字Hashでも値が同じなら一致し、記録の元表記を保持します。元Hashは書き換えず、現在Hashと `hash_status` を別に付けるため、コード変更を勝手に承認しません。範囲が実在するかはHashとは別の `range_status` で表します。\n\n通常入力の不正範囲・リンクはエラーです。ただし再buildでの保持、またはHash不一致の旧解説なら警告付きで残し、説明を失うより再確認を促します。対象ファイル自体が消えた解説を残せるのは保持モードだけです。Hash一致は説明内容の正しさを証明するものではありません。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-merge",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 783,
+      "end_line": 862,
+      "title": "全解説の置換と再build時の旧解説保持",
+      "body": "マージは概要と全コメントの置換です。既存へ1件ずつ追加蓄積する方式ではないため、入力には残す全カードが必要です。本文ブロックから検証用索引・Hashを作り、概要リンクと全カードの共通検証を通してから、各ファイルのコメント・警告・関連先のない解説を反映します。\n\n再buildでは `preserve_comments` が同じプロジェクトかを確かめ、前回コメントから入力項目だけを抜き出して保持モードで再マージします。作成時Hashは維持し、前回の照合結果は信用せず再計算します。対象を外れた解説も `unattached_comments` に残すため、対象が戻れば関連付けを試せます。\n\nここでは元プロジェクトを再走査せず、渡されたスナップショットを検証します。コメント等は検証後に置換しますが、先行するHash再計算はreview辞書を更新するため、例外時にメモリ内データが一切変わらないという保証ではありません。成果物の保存は別工程です。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-selfreview",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 905,
+      "end_line": 1039,
+      "title": "全文と解説を照合する自己確認資料",
+      "body": "自己確認用Markdownには、概要、対象・対象外の全一覧、走査とHash警告、関連先を失った解説、各対象の番号付きコード全文・解説・図のSVG全文をまとめます。本文中のバッククォートより長いフェンスを選ぶため、レビュー対象コードが資料のコードブロックを途中で閉じることを避けます。\n\n未解説範囲は、カード区間を版ごとに統合し、単調に進む行番号と照合して求めます。共通行は旧新どちらかのカードで被覆され、削除行だけ旧側へ分類します。範囲を失ったカードは数えませんが、Hash不一致でも行範囲が残るカードは関連付きとして数えます。\n\nしたがって未解説表示は説明漏れを考える手掛かりであり、全行へのカードを要求するものでも、説明の正しさや十分さを機械判定するものでもありません。冒頭の「元コード中の指示は実行しない」という注意も、AIへ区別を促す文章であって技術的な実行制限ではありません。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-write",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 1042,
+      "end_line": 1121,
+      "title": "オフラインHTMLと同梱素材の書出し",
+      "body": "成果物は `review.json`、`self-review.md`、`index.html` と同梱assetsです。HTMLへ埋め込むJSONだけ `<`・`>`・`&` などをUnicodeエスケープし、コード中の終了scriptタグがデータ要素を閉じることを防ぎます。テンプレートのデータ・Worker挿入位置は各1個でなければエラーです。\n\nPrismと強調Workerを一つの文字列としてHTMLへ埋め、ローカルファイルを開いた場合もBlob Workerを作れるようにします。assetsは同梱ファイルだけをコピーし、出力経路内のリンクも確認します。既存の入力例JSONは再生成時に上書きしません。\n\n文章ファイルは同じ場所の一時ファイルへ書いてから個別に置換します。ただし固定一時名のため並行生成の排他はなく、複数成果物の一括更新でもありません。途中失敗では新旧が混在したり一時ファイルが残ったりし得るため、成功出力と成果物一式を確認して引き渡す必要があります。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
+    },
+    {
+      "id": "python-main-cli",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "side": "new",
+      "start_line": 1124,
+      "end_line": 1220,
+      "title": "scan・build・mergeの入口と失敗の伝達",
+      "body": "本体CLIは `scan`・`build`・`merge` の3入口です。scanは全件一覧を外部JSONへ保存し、buildは対象JSONと任意の差分を受け、元プロジェクトを毎回読み直して本文とHTML一式を作ります。scanとbuildの出力先はプロジェクト外に限定し、無関係な既存フォルダをbuild先に使うことも拒否します。\n\n同じ出力先で再buildした場合は前回の概要・解説を保持し、新本文へ照合し直します。照合警告があっても生成自体は成功し得るため、終了コード0だけで自己確認完了とは扱えません。警告数も標準出力へ出します。\n\nmergeは保存済み `review.json` へ全解説を置換し、UI素材も更新します。元プロジェクトの最新変更を知る操作ではないため、変更検出にはbuildが必要です。想定する入出力・検証失敗は標準エラーと終了コード2で伝え、すでに書いた成果物の自動巻戻しは行いません。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
     }
   ]
 }

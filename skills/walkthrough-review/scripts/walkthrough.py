@@ -35,7 +35,7 @@ import sys
 from urllib.parse import unquote
 import xml.etree.ElementTree as ET
 
-from diff_parser import build_rows, parse_patch
+from diff_parser import iter_build_rows, iter_patch
 
 
 # 実行時のカレントディレクトリに左右されず、このスクリプトに同梱した
@@ -309,38 +309,98 @@ def plain_rows(text):
     } for number, line in enumerate(lines, 1)]
 
 
-def update_code_hashes(file):
-    """行データから旧版・新版の全文Hashを計算し、file辞書へ保存する。
+def pack_rows(rows):
+    """同じ区分で行番号が連続する表示行を、一つの本文ブロックにまとめる。
 
-    入力fileはtextとrowsを含むレビュー対象ファイルの辞書。各版の行番号を
-    持つ行だけを選び、本文とnewline情報から各版の全文を再構成する。旧版では
-    old_textがあればそれを優先する。これはBOM位置が移動した場合などに、
-    同じcontext行でも旧版側の正規化結果を正しく使うためである。
-
-    新版を再構成した本文がfile['text']と違う場合はValueErrorにする。
-    両版が計算できたらfile['code_hashes']をnew/oldのSHA-256辞書で更新する。
-    戻り値はなく、ファイルシステムへは書き込まない。空の版にも空文字列の
-    SHA-256を持たせる。HashにはUTF-8に再符号化した全文と末尾改行が含まれる。
+    行番号は区間の先頭だけ、改行は本文内に保存する。旧新のBOM正規化結果が
+    異なる行だけは単独ブロックとし、例外用old_textを最小範囲に限定する。
+    本文は最後にjoinし、大きな未変更区間でも処理量を行数に比例させる。
     """
-    hashes = {}
-    for side in ("new", "old"):
-        # 追加行はoldがNone、削除行はnewがNoneなので、それぞれ逆の版から除かれる。
-        rows = [row for row in file["rows"] if row[side] is not None]
-        # 旧版のreview.jsonにnewlineがない場合だけ、現行本文の末尾を使う。
-        # 新規生成物には全行にnewlineが入るため、削除行の末尾も復元できる。
-        # 旧形式のデータにない旧版末尾情報を、この互換処理から完全には復元できない。
-        text = "".join(
-            (row.get("old_text", row["text"]) if side == "old" else row["text"]) + ("\n" if row.get(
-                "newline", index < len(rows) - 1 or file["text"].endswith("\n")
-            ) else "")
-            for index, row in enumerate(rows)
+    blocks, parts, block, previous = [], [], None, None
+    for row in rows:
+        continuous = previous is not None and all(
+            row[side] is None and previous[side] is None
+            or row[side] is not None and previous[side] is not None and row[side] == previous[side] + 1
+            for side in ("old", "new")
         )
-        if side == "new" and text != file["text"]:
-            # 本文と行データが食い違う状態で「照合済み」Hashを発行しない。
-            raise ValueError(f"保存されたコード本文と行データが一致しません: {file['path']}")
-        hashes[side] = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    # 両版の計算を終えてから1回で入れ替え、片方だけの辞書を保存しない。
-    file["code_hashes"] = hashes
+        if (block is None or row["kind"] != block["kind"] or not continuous
+                or not previous["newline"] or "old_text" in row or "old_text" in block):
+            if block is not None:
+                block["text"] = "".join(parts)
+            block = {"kind": row["kind"], "old_start": row["old"], "new_start": row["new"]}
+            blocks.append(block)
+            parts = []
+        suffix = "\n" if row["newline"] else ""
+        parts.append(row["text"] + suffix)
+        if "old_text" in row:
+            block["old_text"] = row["old_text"] + suffix
+        previous = row
+    if block is not None:
+        block["text"] = "".join(parts)
+    return blocks
+
+
+def iter_rows(file):
+    """保存ブロックを検証し、必要な処理へだけ行単位の値を順に渡す。
+
+    行配列・全文の複製はfileへ追加しない。両版の行番号の連続性と末尾改行、
+    区分と開始番号の対応、BOM例外の形を検査し、不正な保存データは拒否する。
+    """
+    if "text" in file or "rows" in file or not isinstance(file.get("blocks"), list):
+        raise ValueError("本文はblocksだけで保存してください")
+    next_line, ended = {"old": 1, "new": 1}, {"old": False, "new": False}
+    for block in file["blocks"]:
+        if not isinstance(block, dict) or set(block) - {"kind", "old_start", "new_start", "text", "old_text"}:
+            raise ValueError("本文ブロックの形式が不正です")
+        kind, text = block.get("kind"), block.get("text")
+        if kind not in ("context", "added", "removed") or not isinstance(text, str) or "\r" in text:
+            raise ValueError("本文ブロックの区分・本文が不正です")
+        lines = source_lines(text) or [""]
+        for side, absent in (("old", kind == "added"), ("new", kind == "removed")):
+            start = block.get(side + "_start")
+            invalid = start is not None if absent else (
+                type(start) is not int or start != next_line[side] or ended[side]
+            )
+            if side + "_start" not in block or invalid:
+                raise ValueError("本文ブロックの行番号が連続していません")
+            if not absent:
+                next_line[side] += len(lines)
+                ended[side] = not text.endswith("\n")
+        old_text = block.get("old_text")
+        if "old_text" in block and (
+            kind != "context" or len(lines) != 1 or not isinstance(old_text, str)
+            or len(source_lines(old_text) or [""]) != 1 or "\r" in old_text
+            or old_text.endswith("\n") != text.endswith("\n")
+        ):
+            raise ValueError("本文ブロックの旧版例外が不正です")
+        for index, line in enumerate(lines):
+            row = {
+                "old": None if kind == "added" else block["old_start"] + index,
+                "new": None if kind == "removed" else block["new_start"] + index,
+                "kind": kind, "text": line,
+                "newline": index < len(lines) - 1 or text.endswith("\n"),
+            }
+            if old_text is not None:
+                row["old_text"] = old_text.removesuffix("\n")
+            yield row
+
+
+def file_text(file, side="new"):
+    """旧版または新版の全文を、ブロック本文から直接復元する。"""
+    return "".join(
+        block.get("old_text", block["text"]) if side == "old" else block["text"]
+        for block in file["blocks"] if block[side + "_start"] is not None
+    )
+
+
+def update_code_hashes(file):
+    """唯一の本文であるblocksを検証し、旧新の全文Hashを再計算する。"""
+    for _ in iter_rows(file):
+        pass
+    file["code_hashes"] = {
+        side: hashlib.sha256(file_text(file, side).encode("utf-8")).hexdigest()
+        for side in ("new", "old")
+    }
 
 
 def diff_summary(entry):
@@ -375,7 +435,7 @@ def create_review(project, target_data, patch_text=None):
 
     対象指定の書式・重複・実在性を調べ、両モードともscan_projectで全件一覧を
     作る。差分モードでは対象外ファイルのパッチも照合し、削除済みファイルを
-    一覧に補う。選択されたファイルについてだけ本文・行データ・Hashを戻り値に
+    一覧に補う。選択されたファイルについてだけ本文ブロック・Hashを戻り値に
     含める。対象外のパッチを検証するため一時的に読んだ本文は成果物に含めない。
 
     戻り値にはschema_version、生成時刻、走査一覧、対象ファイル、警告等を持つ。
@@ -390,8 +450,9 @@ def create_review(project, target_data, patch_text=None):
     if set(target_data) - {"title", "files"}:
         raise ValueError("targets.jsonに未定義のキーがあります（使用可: title, files）")
     targets = [relative_path(name) for name in target_data["files"]]
+    target_set = set(targets)
     # 重複対象を別ファイルとして二重に表示したり、解説を二重に付けたりしない。
-    if len(targets) != len(set(targets)):
+    if len(targets) != len(target_set):
         raise ValueError("対象リストに同じファイルが重複しています")
     title = target_data.get("title", project.name)
     if not isinstance(title, str) or not title.strip():
@@ -399,26 +460,26 @@ def create_review(project, target_data, patch_text=None):
     # 対象一覧だけを読むのではなく、まず全件走査することが対象外一覧の根拠になる。
     inventory = scan_project(project)
     # indexとinventoryは同じitem辞書を参照する。後でselectedを変えると一覧にも
-    # 反映される。snapshotsは同じファイルを差分照合後にもう一度読まないための保管。
+    # 反映される。選択対象だけ、照合済みのブロックと元bytes Hashを残す。
     index = {item["path"]: item for item in inventory}
     patches = {}
-    snapshots = {}
-    patch_rows = {}
+    patch_hashes = {}
+    patch_blocks = {}
     if patch_text is not None:
         # targetsにはまだ絞らない。レビュー対象外の変更に不一致があっても検出する。
-        for entry in parse_patch(patch_text):
+        for entry in iter_patch(patch_text):
             # 変更後パスを表示上の識別名とし、削除ファイルだけは旧パスを使う。
             name = relative_path(entry["new_path"] or entry["old_path"])
-            if name in patches:
-                raise ValueError(f"差分内のファイルが重複しています: {name}")
-            patches[name] = entry
+            # hunk本文は保持しない。対象ファイルに必要なヘッダ情報だけを残す。
+            if name in target_set:
+                patches[name] = {key: entry[key] for key in ("old_path", "new_path", "metadata")}
             if entry["new_path"] is None:
                 # 削除を表すパッチなのに同名の走査項目があれば、変更後の入力と矛盾する。
                 if name in index:
                     raise ValueError(f"削除差分のファイルが現在も存在します: {name}")
-                rows = build_rows(entry, None)
+                text, digest, raw_text = "", None, None
                 # ディスクから消えたファイルも選択・対象外照合ができるよう一覧へ加える。
-                # build_rows側で、削除本文がパッチから復元できる形式かを検証している。
+                # iter_build_rowsで、削除本文がパッチから復元できる形式かを検証する。
                 index[name] = {
                     "path": name, "status": "deleted", "size": 0, "selected": False,
                     "message": "削除済み。旧コードを差分から復元",
@@ -428,10 +489,19 @@ def create_review(project, target_data, patch_text=None):
                 # リンクや走査不能項目を変更後の通常ファイルとして読み進めない。
                 if name not in index or index[name]["status"] != "file":
                     raise ValueError(f"差分の変更後ファイルが見つかりません: {name}")
-                snapshots[name] = read_source(project, name)
+                text, digest, raw_text = read_source(project, name)
                 # タプルの3要素目はBOMを保持する照合用本文。表示用本文とは区別する。
-                rows = build_rows(entry, snapshots[name][2])
-            patch_rows[name] = rows
+            rows = iter_build_rows(entry, raw_text)
+            if name in target_set:
+                patch_blocks[name] = pack_rows(rows)
+                if file_text({"blocks": patch_blocks[name]}) != text:
+                    raise ValueError(f"取り込んだコード本文とブロックが一致しません: {name}")
+                patch_hashes[name] = digest
+            else:
+                # 対象外も末尾まで照合する。行辞書は蓄積せず、直後に本文も解放する。
+                for row in rows:
+                    del row
+            del rows, entry, text, raw_text
         # 削除済みパスも現時点の無視規則で判定する。全件の再判定は避ける。
         annotate_git_ignored(project, [item for item in inventory if item["status"] == "deleted"])
     files = []
@@ -445,26 +515,31 @@ def create_review(project, target_data, patch_text=None):
         item["selected"] = True
         if item["status"] == "deleted":
             # 削除ファイルの「新版」は空であり、現在ファイルの元bytes Hashも存在しない。
-            # 旧版の本文は、すでにpatch_rows内へ復元されている。
+            # 旧版の本文は、すでにpatch_blocks内へ復元されている。
             text, digest = "", None
         else:
-            if name not in snapshots:
+            if name not in patch_blocks:
                 # パッチにない未変更対象や全体モードの対象は、ここで初めて全文を読む。
-                snapshots[name] = read_source(project, name)
-            text, digest, _ = snapshots[name]
+                text, digest, _ = read_source(project, name)
+            else:
+                text, digest = None, patch_hashes.pop(name)
         entry = patches.get(name, {})
-        # パッチがある対象は全文に差分行を差し込んだrowsを採用する。
-        # パッチがない対象も本文を省略せず、すべてcontext行として作る。
+        # 差分は解析直後にブロック化し、全ファイル分の行辞書を保持しない。
+        # 未変更本文は分割せず、そのまま一つのcontextブロックにする。
         file = {
             "path": name, "old_path": entry.get("old_path"),
             "diff_metadata": dict(entry.get("metadata", {})),
             "diff_summary": diff_summary(entry),
             "language": LANGUAGES.get(Path(name).suffix.lower(), "plain"),
-            "sha256": digest, "text": text,
-            "rows": patch_rows[name] if name in patch_rows else plain_rows(text),
+            "sha256": digest,
+            "blocks": patch_blocks[name] if name in patch_blocks else (
+                [{"kind": "context", "old_start": 1, "new_start": 1, "text": text}] if text else []
+            ),
             "comments": [],
         }
         update_code_hashes(file)
+        if text is not None and file_text(file) != text:
+            raise ValueError(f"取り込んだコード本文とブロックが一致しません: {name}")
         files.append(file)
     # 通常・削除以外の状態は一覧に残したうえで、概要画面でも確認できる警告にする。
     warnings = [
@@ -474,7 +549,7 @@ def create_review(project, target_data, patch_text=None):
     # 生成日時はUTCで保存する。画面上での時刻表記はフロントエンド側が決める。
     # 解説・Hash警告・対象を失った解説は、初回生成時にはまだ空である。
     return {
-        "schema_version": 1, "title": title,
+        "schema_version": 2, "title": title,
         "mode": "diff" if patch_text is not None else "full",
         "project_name": project.name, "project_root": project.as_posix(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -608,6 +683,103 @@ def validate_diagrams(diagrams):
             raise ValueError(f"図{number}: {error}") from error
 
 
+def comment_context(review):
+    """保存本文を検証し、行参照・ハッシュ検証を共有する索引を返す。"""
+    files = {}
+    for file in review["files"]:
+        # 保存ブロックを再確認してから、その内容に対応するHashを使う。
+        update_code_hashes(file)
+        files[file["path"]] = {
+            "file": file,
+            "line_numbers": {
+                # 追加行・削除行は片方の番号がNone。版ごとに存在する番号だけを集める。
+                side: {row[side] for row in iter_rows(file) if row[side] is not None}
+                for side in ("new", "old")
+            },
+        }
+    return files
+
+
+def validate_comment(comment, files, ids=None, preserve=False):
+    """カード1件を共通規則で検証し、対象名・照合結果・警告を返す。"""
+    ids = set() if ids is None else ids
+    warnings = []
+    allowed = {"id", "file", "start_line", "end_line", "side", "title", "body", "code_hash", "diagrams"}
+    required = {"id", "file", "start_line", "end_line", "title", "body"}
+    # 辞書以外の要素、必須キー不足、未定義キーは取り込み前に拒否する。
+    if not isinstance(comment, dict) or set(comment) - allowed or required - set(comment):
+        raise ValueError(f"コメントの項目が不正です。必須: {', '.join(sorted(required))}")
+    ident = comment["id"]
+    # IDは画面でカードを識別する値。全ファイルを通じて重複させない。
+    if not isinstance(ident, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", ident):
+        raise ValueError("コメントidは英数字・ハイフン・下線の1〜64文字にしてください")
+    if ident in ids:
+        raise ValueError(f"コメントidが重複しています: {ident}")
+    ids.add(ident)
+    name = relative_path(comment["file"])
+    side = comment.get("side", "new")
+    if side not in ("new", "old"):
+        raise ValueError(f"{ident}: sideはnewまたはoldにしてください")
+    start, end = comment["start_line"], comment["end_line"]
+    # boolはPython上ではintの派生型なので、isinstanceではなくtypeで除外する。
+    # ここでは数値の形式と順序を検査し、実在性は対象版の番号集合で後から検査する。
+    if type(start) is not int or type(end) is not int or start < 1 or end < start:
+        raise ValueError(f"{ident}: 行範囲は1以上の整数で開始≦終了にしてください")
+    for field in ("title", "body"):
+        # 空白だけのタイトル・本文を、実際の解説があるものとして扱わない。
+        if not isinstance(comment[field], str) or not comment[field].strip():
+            raise ValueError(f"{ident}: {field}には空でない文字列を指定してください")
+    if "diagrams" in comment:
+        validate_diagrams(comment["diagrams"])
+    original_hash = comment.get("code_hash")
+    # 未指定またはnullは古い入力との互換のため許可し、後でmissingとする。
+    # 指定がある場合は、SHA-256の16進表現として64桁かを確かめる。
+    if original_hash is not None and (
+        not isinstance(original_hash, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", original_hash)
+    ):
+        raise ValueError(f"{ident}: code_hashは作成時のSHA-256（64桁）にしてください")
+    if name not in files:
+        if not preserve:
+            raise ValueError(f"レビュー対象外のファイルには解説を付けられません: {name}")
+        # 本文へは関連付けられなくても、再buildで消えた解説は確認資料へ残す。
+        warnings.append(f"{name} / {ident}: 以前の解説の対象がありません。self-review.mdに保持しました")
+        return None, comment, warnings
+    actual_hash = files[name]["file"]["code_hashes"][side]
+    # 比較対象は解説範囲だけでなく、その版のファイル全文。作成時Hashそのものは
+    # 書き換えず、現在の比較値をactual_code_hashとして別に保存する。
+    status = "missing" if original_hash is None else (
+        "verified" if original_hash.lower() == actual_hash else "mismatch"
+    )
+    if status != "verified":
+        # 未照合と不一致は区別して警告し、人間が説明を読み直すきっかけにする。
+        reason = "作成時のコードハッシュがありません" if status == "missing" else "作成時からコードが変わっています"
+        warnings.append(f"{name} / {ident}: {reason}。解説を確認してください")
+    numbers = files[name]["line_numbers"][side]
+    # 開始・終了が選んだ版の行番号集合にあるかを調べる。
+    # 保持する古い解説では、行が減ったために範囲が消える場合も想定する。
+    range_exists = bool(numbers) and start in numbers and end in numbers
+    if not range_exists and not (preserve or status == "mismatch"):
+        raise ValueError(f"{ident}: ファイルに存在しない行範囲です ({name}, {side})")
+    if not range_exists:
+        warnings.append(f"{name} / {ident}: 以前の参照行 {start}–{end} が存在しません")
+    link_warning = ""
+    try:
+        validate_links(comment["body"], files)
+    except ValueError as error:
+        # 説明本文内の別ファイル参照も、保持が必要なケースでは警告へ変換する。
+        if not (preserve or status == "mismatch"):
+            raise
+        link_warning = str(error)
+        warnings.append(f"{name} / {ident}: {link_warning}")
+    # 入力コメントをコピーし、Pythonが計算した照合結果・範囲状態を付与する。
+    # この時点では元のfile['comments']をまだ置き換えない。
+    return name, {
+        **comment, "side": side, "hash_status": status,
+        "actual_code_hash": actual_hash, "range_status": "valid" if range_exists else "missing",
+        "link_warning": link_warning,
+    }, warnings
+
+
 def merge_comments(review, payload, preserve=False):
     """解説JSONを検証し、review内の概要・解説・照合警告を置き換えて返す。
 
@@ -634,18 +806,7 @@ def merge_comments(review, payload, preserve=False):
     comments = payload.get("comments")
     if not isinstance(overview, str) or not isinstance(comments, list):
         raise ValueError("overviewは文字列、commentsは配列にしてください")
-    files = {}
-    for file in review["files"]:
-        # 保存データの本文と行データを再確認してから、その内容に対応するHashを使う。
-        update_code_hashes(file)
-        files[file["path"]] = {
-            "file": file, "comments": [],
-            "line_numbers": {
-                # 追加行・削除行は片方の番号がNone。版ごとに存在する番号だけを集める。
-                side: {row[side] for row in file["rows"] if row[side] is not None}
-                for side in ("new", "old")
-            },
-        }
+    files = comment_context(review)
     warnings = []
     unattached = []
     try:
@@ -657,89 +818,21 @@ def merge_comments(review, payload, preserve=False):
             raise
         warnings.append(f"以前の概要に無効な参照があります: {error}")
     ids = set()
-    allowed = {"id", "file", "start_line", "end_line", "side", "title", "body", "code_hash", "diagrams"}
-    required = {"id", "file", "start_line", "end_line", "title", "body"}
+    grouped = {name: [] for name in files}
     for comment in comments:
-        # 辞書以外の要素、必須キー不足、未定義キーは取り込み前に拒否する。
-        if not isinstance(comment, dict) or set(comment) - allowed or required - set(comment):
-            raise ValueError(f"コメントの項目が不正です。必須: {', '.join(sorted(required))}")
-        ident = comment["id"]
-        # IDは画面でカードを識別する値。全ファイルを通じて重複させない。
-        if not isinstance(ident, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", ident):
-            raise ValueError("コメントidは英数字・ハイフン・下線の1〜64文字にしてください")
-        if ident in ids:
-            raise ValueError(f"コメントidが重複しています: {ident}")
-        ids.add(ident)
-        name = relative_path(comment["file"])
-        side = comment.get("side", "new")
-        if side not in ("new", "old"):
-            raise ValueError(f"{ident}: sideはnewまたはoldにしてください")
-        start, end = comment["start_line"], comment["end_line"]
-        # boolはPython上ではintの派生型なので、isinstanceではなくtypeで除外する。
-        # ここでは数値の形式と順序を検査し、実在性は対象版の番号集合で後から検査する。
-        if type(start) is not int or type(end) is not int or start < 1 or end < start:
-            raise ValueError(f"{ident}: 行範囲は1以上の整数で開始≦終了にしてください")
-        for field in ("title", "body"):
-            # 空白だけのタイトル・本文を、実際の解説があるものとして扱わない。
-            if not isinstance(comment[field], str) or not comment[field].strip():
-                raise ValueError(f"{ident}: {field}には空でない文字列を指定してください")
-        if "diagrams" in comment:
-            validate_diagrams(comment["diagrams"])
-        original_hash = comment.get("code_hash")
-        # 未指定またはnullは古い入力との互換のため許可し、後でmissingとする。
-        # 指定がある場合は、SHA-256の16進表現として64桁かを確かめる。
-        if original_hash is not None and (
-            not isinstance(original_hash, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", original_hash)
-        ):
-            raise ValueError(f"{ident}: code_hashは作成時のSHA-256（64桁）にしてください")
-        if name not in files:
-            if not preserve:
-                raise ValueError(f"レビュー対象外のファイルには解説を付けられません: {name}")
-            unattached.append(comment)
-            # 本文へは関連付けられなくても、再buildで消えた解説は確認資料へ残す。
-            warnings.append(f"{name} / {ident}: 以前の解説の対象がありません。self-review.mdに保持しました")
-            continue
-        actual_hash = files[name]["file"]["code_hashes"][side]
-        # 比較対象は解説範囲だけでなく、その版のファイル全文。作成時Hashそのものは
-        # 書き換えず、現在の比較値をactual_code_hashとして別に保存する。
-        status = "missing" if original_hash is None else (
-            "verified" if original_hash.lower() == actual_hash else "mismatch"
-        )
-        if status != "verified":
-            # 未照合と不一致は区別して警告し、人間が説明を読み直すきっかけにする。
-            reason = "作成時のコードハッシュがありません" if status == "missing" else "作成時からコードが変わっています"
-            warnings.append(f"{name} / {ident}: {reason}。解説を確認してください")
-        numbers = files[name]["line_numbers"][side]
-        # 開始・終了が選んだ版の行番号集合にあるかを調べる。
-        # 保持する古い解説では、行が減ったために範囲が消える場合も想定する。
-        range_exists = bool(numbers) and start in numbers and end in numbers
-        if not range_exists and not (preserve or status == "mismatch"):
-            raise ValueError(f"{ident}: ファイルに存在しない行範囲です ({name}, {side})")
-        if not range_exists:
-            warnings.append(f"{name} / {ident}: 以前の参照行 {start}–{end} が存在しません")
-        link_warning = ""
-        try:
-            validate_links(comment["body"], files)
-        except ValueError as error:
-            # 説明本文内の別ファイル参照も、保持が必要なケースでは警告へ変換する。
-            if not (preserve or status == "mismatch"):
-                raise
-            link_warning = str(error)
-            warnings.append(f"{name} / {ident}: {link_warning}")
-        # 入力コメントをコピーし、Pythonが計算した照合結果・範囲状態を付与する。
-        # この時点では元のfile['comments']をまだ置き換えない。
-        files[name]["comments"].append({
-            **comment, "side": side, "hash_status": status,
-            "actual_code_hash": actual_hash, "range_status": "valid" if range_exists else "missing",
-            "link_warning": link_warning,
-        })
+        name, checked, messages = validate_comment(comment, files, ids, preserve)
+        warnings.extend(messages)
+        if name is None:
+            unattached.append(checked)
+        else:
+            grouped[name].append(checked)
     # ここまで受け付けられた入力で全体を置換する。同じJSONを再マージしても
     # コメントが追加蓄積される方式ではないため、重複は発生しない。
     review["overview"] = overview
     review["hash_warnings"] = warnings
     review["unattached_comments"] = unattached
-    for entry in files.values():
-        entry["file"]["comments"] = entry["comments"]
+    for name, entry in files.items():
+        entry["file"]["comments"] = grouped[name]
     return review
 
 
@@ -820,10 +913,48 @@ def diagram_review(comment):
     return output
 
 
+def uncovered_lines(file):
+    """版ごとの解説範囲を統合し、単調増加する行番号と一度ずつ照合する。
+
+    context行は旧・新どちらの解説でも被覆される。削除行だけ旧行へ分類する。
+    行数L・解説数Cに対しO(L + C log C)で、欠損範囲は被覆に含めない。
+    """
+    ranges = {"old": [], "new": []}
+    for comment in file["comments"]:
+        if comment.get("range_status") != "missing":
+            ranges[comment.get("side", "new")].append((comment["start_line"], comment["end_line"]))
+    for side in ranges:
+        merged = []
+        for start, end in sorted(ranges[side]):
+            if merged and start <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+            else:
+                merged.append((start, end))
+        ranges[side] = merged
+    positions = {"old": 0, "new": 0}
+    uncovered = {"old": [], "new": []}
+    for row in iter_rows(file):
+        covered = False
+        for side in ("old", "new"):
+            number, intervals = row[side], ranges[side]
+            if number is None:
+                continue
+            position = positions[side]
+            while position < len(intervals) and intervals[position][1] < number:
+                position += 1
+            positions[side] = position
+            if position < len(intervals) and intervals[position][0] <= number:
+                covered = True
+        if not covered:
+            side = "new" if row["new"] is not None else "old"
+            uncovered[side].append(row[side])
+    return uncovered
+
+
 def self_review(review):
     """レビュー辞書から、AIが確認するためのMarkdown本文を生成して返す。
 
-    入力reviewには走査一覧、対象コードの行データ、Hash、概要、解説等を想定する。
+    入力reviewには走査一覧、対象コードのブロック、Hash、概要、解説等を想定する。
     出力は全体概要、全ファイルの対象/対象外、警告、関連先を失った解説、
     各対象の番号付きコード全文、解説、未解説範囲を含むMarkdown文字列。
     ファイル保存はwrite_reviewへ任せ、入力reviewの内容も変更しない。
@@ -878,7 +1009,7 @@ def self_review(review):
             "### コード全文", "", "区分: ` `=変更なし、`+`=追加、`-`=削除。旧/新の行番号を併記。", "",
         ])
         lines = []
-        for row in file["rows"]:
+        for row in iter_rows(file):
             # 追加には旧番号が、削除には新番号がない。空欄でそろえて区分を併記する。
             symbol = {"context": " ", "added": "+", "removed": "-"}[row["kind"]]
             lines.append(f"{symbol} {str(row['old'] or ''):>5} {str(row['new'] or ''):>5} | {row['text']}")
@@ -898,20 +1029,7 @@ def self_review(review):
         if not file["comments"]:
             # 「解説なし」と空の出力の区別がつくよう、明示的な表示を入れる。
             output.append("（まだありません）")
-        uncovered = {"new": [], "old": []}
-        for row in file["rows"]:
-            # 現在存在しない範囲は被覆に数えない。存在する範囲については、
-            # コメントが指す版の行番号が範囲に入るかを、各コメントと照合する。
-            covered = any(
-                comment.get("range_status") != "missing"
-                and row[comment.get("side", "new")] is not None
-                and comment["start_line"] <= row[comment.get("side", "new")] <= comment["end_line"]
-                for comment in file["comments"]
-            )
-            if not covered:
-                # 両版に存在するcontext行は新版一覧へ、削除行だけ旧版一覧へ集める。
-                side = "new" if row["new"] is not None else "old"
-                uncovered[side].append(row[side])
+        uncovered = uncovered_lines(file)
         output.extend([
             "", "### 未解説範囲", "",
             f"- 新行: {line_ranges(uncovered['new'])}",
@@ -961,13 +1079,21 @@ def write_review(review, output, copy_assets=False):
     json_text = json.dumps(review, ensure_ascii=False, indent=2)
     # コード中の</script>等で埋込JSON要素が途中終了しないよう、<等をJSONの
     # Unicodeエスケープへ変える。JSONとして復元した値は加工前と同じになる。
-    embedded = json_text.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+    embedded = json.dumps(review, ensure_ascii=False, separators=(",", ":"))
+    embedded = embedded.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
     embedded = embedded.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    if template.count("__REVIEW_DATA__") != 1:
+    if template.count("__REVIEW_DATA__") != 1 or template.count("__HIGHLIGHT_WORKER__") != 1:
         # 挿入位置が消えた、または増えたテンプレートを黙って生成に使用しない。
         raise ValueError("HTMLテンプレートのデータ挿入位置が不正です")
-    html = template.replace("__REVIEW_DATA__", embedded)
+    # file://でも通信を使わずBlob Workerを作れるよう、同梱Prismと処理を一度だけ埋め込む。
+    # Prism自身のWorkerメッセージ処理は止め、旧新の両版を一つの要求で扱う。
+    worker = "self.Prism = {disableWorkerMessageHandler: true, manual: true};\n" + (
+        ASSET_ROOT / "vendor/prism.js"
+    ).read_text(encoding="utf-8") + "\n" + (ASSET_ROOT / "highlight-worker.js").read_text(encoding="utf-8")
+    worker_json = json.dumps(worker, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    values = {"__REVIEW_DATA__": embedded, "__HIGHLIGHT_WORKER__": worker_json}
+    html = re.sub(r"__REVIEW_DATA__|__HIGHLIGHT_WORKER__", lambda match: values[match[0]], template)
     output.mkdir(parents=True, exist_ok=True)
     if copy_assets:
         # 任意ディレクトリを削除せず、製品に同梱するファイルだけを書き込む。
@@ -1054,7 +1180,7 @@ def main(argv=None):
                 # 再build時は前回の概要・解説を読み出し、作成時Hashを維持したまま
                 # 新しいコードに対応できるかを調べる。旧結果をそのまま信用はしない。
                 previous = read_json(output / "review.json")
-                if previous.get("schema_version") != 1:
+                if previous.get("schema_version") != 2:
                     raise ValueError("既存のreview.jsonは未対応の形式です")
                 preserve_comments(previous, review)
             write_review(review, output, copy_assets=True)
@@ -1068,7 +1194,7 @@ def main(argv=None):
             # 保存済み本文・一覧を読み、HTMLと照合結果をそのスナップショットで更新する。
             output = args.review_dir.resolve()
             review = read_json(output / "review.json")
-            if not isinstance(review, dict) or review.get("schema_version") != 1:
+            if not isinstance(review, dict) or review.get("schema_version") != 2:
                 raise ValueError("未対応のreview.json形式です。buildで再生成してください")
             merge_comments(review, read_json(args.comments))
             # UIの配布ファイルも現行版へコピーし、Hash警告等の表示とデータをそろえる。

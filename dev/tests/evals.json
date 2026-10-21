@@ -5,36 +5,91 @@
       "id": 1,
       "prompt": "walkthrough-reviewスキルを実行",
       "expected_output": "現在のプロジェクトの全体レビューHTMLをAIだけで完成させ、全対象の解説と自己確認結果を提示する。",
-      "files": ["dev/tests/fixtures/project"],
-      "assertions": ["追加の対象・出力先・JSONの入力を要求しない", "全ファイル一覧と対象外一覧を保持する", "非空対象に意味のある解説がある", "全コメントのhashとrangeが有効", "元プロジェクトを変更しない"]
+      "files": [
+        "dev/tests/fixtures/project"
+      ],
+      "assertions": [
+        "追加の対象・出力先・JSONの入力を要求しない",
+        "全ファイル一覧と対象外一覧を保持する",
+        "非空対象に意味のある解説がある",
+        "全コメントのhashとrangeが有効",
+        "元プロジェクトを変更しない"
+      ]
     },
     {
       "id": 2,
       "prompt": "walkthrough-reviewスキルを実行。添付のdiff.patchで今回の変更と削除した処理をレビューしてください。",
       "expected_output": "差分モードの全文レビュー。削除ファイルを旧行番号で説明し、関連する未変更ファイルも理解できる資料。",
-      "files": ["dev/tests/fixtures/project", "dev/tests/fixtures/diff.patch"],
-      "assertions": ["全ファイルを走査する", "削除されたlegacy.pyを復元する", "旧行をold側のhashで説明する", "解説・リンク・Hashを確認して渡す"]
+      "files": [
+        "dev/tests/fixtures/project",
+        "dev/tests/fixtures/diff.patch"
+      ],
+      "assertions": [
+        "全ファイルを走査する",
+        "削除されたlegacy.pyを復元する",
+        "旧行をold側のhashで説明する",
+        "解説・リンク・Hashを確認して渡す"
+      ]
     },
     {
       "id": 3,
       "prompt": "walkthrough-reviewスキルを実行。Gitの今回の差分を見たい。",
       "expected_output": "パッチをAIがGitから作成し、HEADから現在の作業コピーまでを説明する。未追跡ファイルの扱いを明示する。",
       "files": [],
-      "assertions": ["人間にパッチ作成を依頼しない", "比較元とステージ済み・未ステージの範囲を明示する", "Gitのindexや作業コードを変更しない", "未追跡ファイルを黙って無視しない"]
+      "assertions": [
+        "人間にパッチ作成を依頼しない",
+        "比較元とステージ済み・未ステージの範囲を明示する",
+        "Gitのindexや作業コードを変更しない",
+        "未追跡ファイルを黙って無視しない"
+      ]
     },
     {
       "id": 4,
       "prompt": "walkthrough-reviewスキルを実行。checkoutとcalculate_totalの呼び出し関係と、割引後の金額が決まる流れを理解したい。",
       "expected_output": "AIが図の効果を判断し、呼び出しと金額の流れを説明するカードへSVG図を添えた全体レビュー資料。図のないカードも必要に応じて併用する。",
-      "files": ["dev/tests/fixtures/project"],
-      "assertions": ["人間にSVGやJSONの用意を求めない", "図が役立つ呼び出し・データフローの箇所にdiagramsを追加する", "titleとdescriptionがあり、図のノード・矢印が実装に対応する", "装飾目的で全カードに図を強制しない", "自己確認資料でSVG全文と該当行・版・Hashを確認する", "表示確認可能なら文字切れと図付きカードのスクロールを確認する", "図を含む質問文を確認する", "再build後も図を保持し全コメントのhashとrangeが有効"]
+      "files": [
+        "dev/tests/fixtures/project"
+      ],
+      "assertions": [
+        "人間にSVGやJSONの用意を求めない",
+        "図が役立つ呼び出し・データフローの箇所にdiagramsを追加する",
+        "titleとdescriptionがあり、図のノード・矢印が実装に対応する",
+        "装飾目的で全カードに図を強制しない",
+        "自己確認資料でSVG全文と該当行・版・Hashを確認する",
+        "表示確認可能なら文字切れと図付きカードのスクロールを確認する",
+        "図を含む質問文を確認する",
+        "再build後も図を保持し全コメントのhashとrangeが有効"
+      ]
     },
     {
       "id": 5,
       "prompt": "walkthrough-reviewスキルを実行。渡したパッチの権限変更や名前変更も含めて今回の差分を説明してください。",
       "expected_output": "コード全文と差分付加情報を併記し、本文が同じファイルでも権限変更を変更として説明する資料。",
       "files": [],
-      "assertions": ["権限変更だけの対象を省略しない", "diff_metadataとdiff_summaryを読んで説明する", "本文ハッシュ一致だけで変更なしと判断しない", "名前変更・コピー等の情報がある場合は変更後パスとの対応を確認する", "画面・自己確認資料・質問文に差分付加情報が残る"]
+      "assertions": [
+        "権限変更だけの対象を省略しない",
+        "diff_metadataとdiff_summaryを読んで説明する",
+        "本文ハッシュ一致だけで変更なしと判断しない",
+        "名前変更・コピー等の情報がある場合は変更後パスとの対応を確認する",
+        "画面・自己確認資料・質問文に差分付加情報が残る"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "walkthrough-reviewスキルを実行。解説はカード単位で保存し、利用可能なら独立した範囲をサブエージェントに分担してください。",
+      "expected_output": "全文確認とカード単位保存を行い、担当報告と確認記録を統合して完成HTMLを提示する。",
+      "files": [
+        "dev/tests/fixtures/project"
+      ],
+      "assertions": [
+        "人間にJSONやCLIの準備を求めない",
+        "カード本文を1件ずつ保存し、巨大な全配列をLLMが生成・再掲しない",
+        "readのnextを辿り担当範囲の全文と必要な旧新の版を確認する",
+        "担当別に保存先とIDを分け、親へカード本文・コード全文を再掲しない",
+        "利用できない環境では単独で同じ範囲を完了する",
+        "各担当の確認記録と親の統合確認を経てexport/mergeする",
+        "最後に再buildし、変更したコードをHashだけの更新で追認しない"
+      ]
     }
   ]
 }

@@ -188,6 +188,58 @@ class PackageSkillTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected"):
             package.verify_archive(candidate, payload)
 
+    def test_extracted_skill_creates_cards_and_exports_without_source_repository(self):
+        """配布物だけでカードの作成・SVG・確認・集約・最終再buildを完了する。"""
+        archive_path, *_ = package.build_package(self.skill, self.output)
+        extracted = self.workspace / "card-only-extracted"
+        with zipfile.ZipFile(archive_path) as archive:
+            archive.extractall(extracted)
+        self.skill.rename(self.workspace / "unused-original-skill")
+        standalone = extracted / package.SKILL_NAME
+        project = self.workspace / "card-project"
+        project.mkdir()
+        (project / "main.py").write_bytes(b"value = 2\n")
+        prepared = self.run_python(standalone / "scripts/prepare_review.py", project,
+                                   "--work-parent", self.workspace / "card-work")
+        session = json.loads(prepared.stdout)
+        self.assertEqual(Path(session["cards_cli"]), standalone / "scripts/comment_cards.py")
+        work, review, store = Path(session["work"]), Path(session["review_dir"]), Path(session["authoring"])
+        targets = Path(session["targets"])
+        targets.write_text(json.dumps({"files": ["main.py", "old.py"]}), encoding="utf-8")
+        patch = work / "diff.patch"
+        patch.write_text("--- a/main.py\n+++ b/main.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+                         "--- a/old.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-legacy = True\n", encoding="utf-8")
+        build = ["build", project, "--targets", targets, "--patch", patch, "--output", review]
+        self.run_python(session["cli"], *build)
+        self.run_python(session["cards_cli"], "init", review, "--output", store)
+        body = work / "body.md"
+        body.write_text("値を定義する。", encoding="utf-8")
+        svg = work / "diagram.svg"
+        svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><text x="5" y="25">value</text></svg>', encoding="utf-8")
+        for owner, name, side in [("new", "main.py", "new"), ("old", "old.py", "old")]:
+            page = json.loads(self.run_python(session["cards_cli"], "read", store, "--file", name, "--side", side).stdout)
+            self.assertIsNone(page["next"])
+            arguments = ["add", store, "--owner", owner, "--id", owner + "-value", "--file", name,
+                         "--side", side, "--start", 1, "--end", 1, "--title", "値の定義", "--body-file", body]
+            if side == "new":
+                arguments.extend(["--svg-file", svg, "--diagram-title", "値", "--diagram-description-file", body])
+            self.run_python(session["cards_cli"], *arguments)
+            self.run_python(session["cards_cli"], "reviewed", store, "--file", name, "--owner", owner)
+        self.run_python(session["cards_cli"], "overview", store, "--body-file", body)
+        self.run_python(session["cards_cli"], "export", store, "--output", session["comments"])
+        self.run_python(session["cli"], "merge", review, "--comments", session["comments"])
+        self.run_python(session["cli"], *build)
+        data = json.loads((review / "review.json").read_text("utf-8"))
+        self.assertFalse(data["hash_warnings"])
+        comments = [card for file in data["files"] for card in file["comments"]]
+        self.assertEqual(len(comments), 2)
+        self.assertTrue(all(card["hash_status"] == "verified" for card in comments))
+        self.assertIn(svg.read_text("utf-8"), (review / "self-review.md").read_text("utf-8"))
+        status = json.loads(self.run_python(session["cards_cli"], "status", store).stdout)
+        self.assertEqual(status["reviewed_files"], 2)
+        self.assertTrue((standalone / "references/card-authoring.md").is_file())
+        self.assertTrue((standalone / "references/delegation.md").is_file())
+
     def test_extracted_skill_prepares_and_builds_full_and_diff_without_source(self):
         """配布物だけで準備・差分・SVG解説のマージと再生成が動くことを確認する。"""
         archive_path, *_ = package.build_package(self.skill, self.output)
@@ -270,11 +322,11 @@ class PackageSkillTests(unittest.TestCase):
             self.assertTrue((standalone / "references/svg-diagrams.md").is_file())
             if mode == "diff":
                 deleted = next(file for file in final["files"] if file["path"] == "old.py")
-                self.assertEqual(deleted["rows"][0]["kind"], "removed")
+                self.assertEqual(deleted["blocks"][0]["kind"], "removed")
                 script = next(file for file in final["files"] if file["path"] == "run.sh")
                 self.assertEqual(script["diff_metadata"]["old mode"], "100644")
                 self.assertEqual(script["diff_metadata"]["new mode"], "100755")
-                self.assertTrue(all(row["kind"] == "context" for row in script["rows"]))
+                self.assertTrue(all(row["kind"] == "context" for row in script["blocks"]))
                 self.assertIn("100644", self_review)
                 self.assertIn("100755", self_review)
                 self.assertTrue(script["diff_summary"])

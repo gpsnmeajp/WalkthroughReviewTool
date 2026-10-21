@@ -211,6 +211,20 @@ def prepare():
     long_project = OUTPUT / "projects" / "long"
     save(long_project / "long.py", "".join(f"value_{line:03d} = {line}  # acceptance line {line}\n" for line in range(1, 161)))
     write_fixture("long", long_project, {"title": "長文とスクロール連動", "files": ["long.py"]}, long_comments)
+    large_project = OUTPUT / "projects" / "large"
+    large_lines = [f"value_{line:05d} = {line}\n" for line in range(1, 50001)]
+    large_lines[12344] = 'wide_value = "' + "横" * 1000 + '"\n'
+    large_lines[24997:25002] = ['message = """\n', "multi-line\n", "worker highlight\n", "keeps context\n", '"""\n']
+    large_lines[-1] = "value_50000 = 50000"
+    save(large_project / "large.py", "".join(large_lines))
+    save(large_project / "small.py", 'print("small file")\n')
+    write_fixture("large", large_project, {"title": "五万行の表示範囲描画", "files": ["large.py", "small.py"]}, lambda review: {
+        "overview": "# 五万行の表示確認\n\n[横長行](review:large.py#L12345)、[複数行文字列](review:large.py#L25000)、[末尾](review:large.py#L49990)への移動、切替、質問文を確認します。",
+        "comments": [
+            comment(review, "large-middle", "large.py", 24998, 25002, "複数行文字列", "表示範囲の境界でも文字列の色を維持します。"),
+            comment(review, "large-last", "large.py", 49990, 50000, "末尾11行", "表示範囲だけを描画して末尾へ移動します。末尾行には改行がありません。"),
+        ],
+    })
     hash_project = OUTPUT / "projects" / "hash"
     save(hash_project / "main.py", "".join(f"value_{line:02d} = {line}\n" for line in range(1, 13)))
     save(hash_project / "extra.py", 'extra = "retained source"\nprint(extra)\n')
@@ -242,6 +256,7 @@ def prepare():
         "clipboard-failure": {"base": "diff", "fault": "Clipboard API rejects and execCommand copy returns false", "expected": "Manual Ctrl+C notice; complete prompt text selected"},
         "unmerged": {"targets": 2, "comments": 0, "empty_file": "empty.py", "nonempty_file": "main.py"},
         "no-targets": {"targets": 0, "excluded": 2, "comments": 0},
+        "large": {"targets": 2, "lines": 50000, "comments": 2, "verified": 2},
         "long": {"targets": 1, "lines": 160, "comments": 5, "verified": 4, "missing_hash": 1, "overlapping_start_line": 40},
         "hash_initial": {"targets": 2, "comments": 3, "verified": 3, "main_lines": 12},
         "hash_mutated_source_only": {"snapshot_main_lines": 12, "source_main_lines": 3, "verified": 3, "html_unchanged": True},
@@ -252,7 +267,7 @@ def prepare():
                      "expected": "100644 to 100755; old.py to moved.py; empty.txt added"},
     })
     print(f"Prepared: {OUTPUT}")
-    for name in ("full", "diff", "clipboard-failure", "unmerged", "no-targets", "long", "hash", "diagrams", "metadata"):
+    for name in ("full", "diff", "clipboard-failure", "unmerged", "no-targets", "long", "large", "hash", "diagrams", "metadata"):
         print((OUTPUT / name / "index.html").as_uri())
     print("\nNext: python tools/prepare_browser_acceptance.py hash-mutate")
     print("Reload hash/index.html: it must still show 12 original lines and 3 verified comments.")

@@ -6,9 +6,10 @@
 現在の本文と照合する。旧ファイルそのものは入力されないため、削除行は
 パッチに記録された内容を復元するものであり、旧実ファイルとの照合ではない。
 
-公開する処理は次の二つ。
+公開する処理は次の通り。
 ・parse_patch: パッチの形式、パス、行数、旧新の座標を検査して分解する。
 ・build_rows: 分解済みの各ファイルを現在の全文と照合し、表示行を作る。
+・iter_patch / iter_build_rows: 同じ検査をファイル・行の順に行い、蓄積せず返す。
 
 主な辞書の形:
 ・entry: old_path / new_path / hunks / metadata。
@@ -154,8 +155,8 @@ def _git_paths(value: str) -> tuple[str, str, bool]:
     value には "diff --git " 自体を含めない。引用パスと、Git が引用せず
     出力する空白入りパスに対応する。旧 a/・新 b/ の組を検出したときだけ
     それぞれを外し、三つ目の返り値を True にする。
-    この真偽値を --- / +++ にも引き継ぎ、--no-prefix の実ディレクトリ名
-    "a" や "b" を、ヘッダ側だけで誤って切り落とさない。
+    この判定は暫定とし、_entry_git_paths が rename/copy メタデータと照合する。
+    確定した真偽値を --- / +++ に引き継ぎ、実ディレクトリ名を切り落とさない。
 
     入力変更・ファイルアクセスはない。二つのパスの境界が不正・曖昧、
     引用が不正、またはパスが安全でない場合は ValueError。
@@ -199,6 +200,24 @@ def _git_paths(value: str) -> tuple[str, str, bool]:
     return _safe_path(old), _safe_path(new), prefixed
 
 
+def _entry_git_paths(state):
+    """接頭辞を含まないrename/copyの記録で、実ディレクトリa/・b/を区別する。
+
+    --no-prefix の a/file → b/file も、見かけは通常の接頭辞付きヘッダと同じ。
+    メタデータの両パスが接頭辞を外す前の名前に完全一致した場合だけ、接頭辞なしと確定する。
+    それ以外の不一致や片側だけの指定は _finish_entry の検証に残す。
+    """
+    paths = state.get("git_paths")
+    if paths is None or not paths[2]:
+        return paths
+    original = ("a/" + paths[0], "b/" + paths[1])
+    for operation in ("rename", "copy"):
+        metadata_paths = (state["metadata"].get(operation + " from"), state["metadata"].get(operation + " to"))
+        if metadata_paths == original:
+            return (*original, False)
+    return paths
+
+
 def _header_paths(old: str, new: str, prefixed: bool | None = None) -> tuple[str | None, str | None]:
     """--- / +++ の値を (旧相対パス, 新相対パス) に変換する。
 
@@ -228,21 +247,45 @@ def _header_paths(old: str, new: str, prefixed: bool | None = None) -> tuple[str
     )
 
 
-def _read_hunk(lines: list[str], index: int) -> tuple[dict, int]:
-    """index の hunk 一つを読み、(hunk 辞書, 次に読む位置) を返す。
+class _PatchLines:
+    """LFだけを区切りとし、先読み一行だけを保持するパッチ入力。"""
 
-    lines は LF で分割済みのパッチ、index はそのヘッダを指す 0 始まりの位置。
-    返す位置は読み終えた直後で、次の hunk やファイルヘッダは消費しない。
+    def __init__(self, text):
+        self.text, self.offset, self.number = text, 0, 0
+        self.cached = None
+
+    def peek(self):
+        if self.cached is None and self.offset < len(self.text):
+            end = self.text.find("\n", self.offset)
+            if end < 0:
+                self.cached = self.text[self.offset:]
+            else:
+                self.cached = self.text[self.offset:end].removesuffix("\r")
+        return self.cached
+
+    def pop(self):
+        line = self.peek()
+        if line is None:
+            return None
+        end = self.text.find("\n", self.offset)
+        self.offset = len(self.text) if end < 0 else end + 1
+        self.number += 1
+        self.cached = None
+        return line
+
+
+def _read_hunk(lines):
+    """先頭の hunk 一つを読み、辞書を返す。次のヘッダは消費しない。
     本文の "+" は新側だけ、"-" は旧側だけ、空白は両側の一行として数える。
     末尾改行なしマーカーは本文行数に含めず、直前の行の newline を False にする。
 
-    入力 lines は変更せず、新しい辞書と内部リストだけを組み立てる。
+    入力カーソルを読み進め、新しい辞書と内部リストを組み立てる。
     不正なヘッダ、本文行数の過不足、未知の本文記号、マーカーの誤配置は
     ValueError。ファイル全体に対する座標や末尾位置の妥当性は後段でも検査する。
     """
-    match = _HUNK.fullmatch(lines[index])
+    match = _HUNK.fullmatch(lines.pop())
     if not match:
-        raise ValueError(f"不正な hunk ヘッダです（パッチ {index + 1} 行目）")
+        raise ValueError(f"不正な hunk ヘッダです（パッチ {lines.number} 行目）")
     old_start, old_count, new_start, new_count = match.groups()
     # ,行数 を省略した形式は 1 行を表す。0 行とは区別して記録する。
     hunk = {
@@ -259,17 +302,16 @@ def _read_hunk(lines: list[str], index: int) -> tuple[dict, int]:
     if not hunk["old_count"] and not hunk["new_count"]:
         # どちらも 0 では変更も文脈もなく、意味のない hunk となる。
         raise ValueError("旧行・新行ともに空の hunk は不正です")
-    index += 1
     old_seen = new_seen = 0
-    while index < len(lines):
-        line = lines[index]
+    while lines.peek() is not None:
+        line = lines.peek()
         if line == _NO_NEWLINE:
             # 行数を読み終えた直後にもマーカーが置けるため、終了判定より先に
             # 処理する。直前の本文行がない場合や、二重指定は受け付けない。
             if not hunk["lines"] or not hunk["lines"][-1]["newline"]:
                 raise ValueError("末尾改行マーカーの位置が不正です")
             hunk["lines"][-1]["newline"] = False
-            index += 1
+            lines.pop()
             continue
         if old_seen == hunk["old_count"] and new_seen == hunk["new_count"]:
             # ヘッダが宣言した双方の行数に達した。次の行は外側の解析へ戻す。
@@ -277,7 +319,7 @@ def _read_hunk(lines: list[str], index: int) -> tuple[dict, int]:
         if not line or line[0] not in " +-":
             # 空のソース行も、パッチでは "+" などの記号が必要。
             # 本当に空のパッチ行をソースの空行として補ってはいけない。
-            raise ValueError(f"hunk の本文・行数が不正です（パッチ {index + 1} 行目）")
+            raise ValueError(f"hunk の本文・行数が不正です（パッチ {lines.number + 1} 行目）")
         prefix = line[0]
         # bool は加算時に True=1 / False=0 として扱われる。
         # "+" は旧行を増やさず、"-" は新行を増やさず、空白は双方を増やす。
@@ -291,11 +333,11 @@ def _read_hunk(lines: list[str], index: int) -> tuple[dict, int]:
             "text": line[1:],
             "newline": True,
         })
-        index += 1
+        lines.pop()
     if old_seen != hunk["old_count"] or new_seen != hunk["new_count"]:
         # パッチの終端が早く来た場合も、欠けた本文を推測せず拒否する。
         raise ValueError("hunk の本文がヘッダの行数に足りません")
-    return hunk, index
+    return hunk
 
 
 def _check_coordinates(hunks: list[dict]) -> None:
@@ -339,7 +381,7 @@ def _finish_entry(state: dict) -> dict:
     ファイルへのアクセスは行わず、現在本文との一致は build_rows が担当する。
     """
     metadata = state["metadata"]
-    git_paths = state.get("git_paths")
+    git_paths = _entry_git_paths(state)
     headers = state.get("headers")
     if headers:
         # 本文用ヘッダを優先するが、Git ヘッダの名前との食い違いは許さない。
@@ -411,65 +453,62 @@ def parse_patch(text: str) -> list[dict]:
     未対応形式は ValueError。未知の行を無視して部分的なレビューを作らない。
     現在のコード本文との照合は、返した全 entry を build_rows に渡して行う。
     """
-    # CRLF で保存されたパッチも利用可能にする。splitlines は本文中の
-    # 垂直タブ等まで分割するため使わない。
-    lines = text.replace("\r\n", "\n").split("\n")
-    if lines and lines[-1] == "":
-        # split が最後の LF の後ろに作った要素だけを除く。本文の空行は
-        # hunk 内で先頭記号を持つため、この処理で削除されない。
-        lines.pop()
-    entries = []
+    return list(iter_patch(text))
+
+
+def _parse_entries(text):
+    lines = _PatchLines(text)
     # state は現在解析中の一ファイル。まだヘッダがなければ None。
     state = None
-    index = 0
-    while index < len(lines):
-        line = lines[index]
+    while lines.peek() is not None:
+        line = lines.peek()
         if (
             line.startswith(("diff --cc ", "diff --combined ", "@@@", "Binary files "))
             or line == "GIT binary patch"
         ):
             # 通常 unified diff と異なる構造を、その形式のまま明確に拒否する。
-            raise ValueError(f"未対応の binary / combined diff です（パッチ {index + 1} 行目）")
+            raise ValueError(f"未対応の binary / combined diff です（パッチ {lines.number + 1} 行目）")
         if line.startswith("diff --git "):
             if state is not None:
                 # 新ファイルの開始前に、前のファイルを必ず完全に検査する。
-                entries.append(_finish_entry(state))
+                yield _finish_entry(state)
+                state = None
             state = {
                 "git_paths": _git_paths(line[len("diff --git "):]),
                 "hunks": [], "metadata": {},
             }
             # この分岐は一行を消費した。次のループではメタデータ等を読む。
-            index += 1
+            lines.pop()
             continue
         if line.startswith("--- "):
             if state is not None and "headers" in state:
                 # 通常 unified diff では diff --git を挟まず次の --- が現れる。
-                entries.append(_finish_entry(state))
+                yield _finish_entry(state)
                 state = None
-            if index + 1 >= len(lines) or not lines[index + 1].startswith("+++ "):
+            lines.pop()
+            new_header = lines.pop()
+            if new_header is None or not new_header.startswith("+++ "):
                 # 旧新の組が欠けたまま hunk を別ファイルへ結び付けない。
                 raise ValueError("--- の直後に +++ ファイルヘッダが必要です")
             if state is None:
                 # Git ヘッダなしの通常 unified diff 用の状態をここで作る。
                 state = {"hunks": [], "metadata": {}}
+            git_paths = _entry_git_paths(state)
             state["headers"] = _header_paths(
-                line[4:], lines[index + 1][4:],
-                state["git_paths"][2] if "git_paths" in state else None,
+                line[4:], new_header[4:],
+                git_paths[2] if git_paths is not None else None,
             )
             # --- と +++ の二行をまとめて消費する。
-            index += 2
             continue
         if line.startswith("@@"):
             if state is None or "headers" not in state:
                 raise ValueError("hunk の前に --- と +++ ファイルヘッダが必要です")
-            hunk, index = _read_hunk(lines, index)
-            # _read_hunk が次の未読位置を返すため、ここで index を増やさない。
-            state["hunks"].append(hunk)
+            state["hunks"].append(_read_hunk(lines))
             continue
         if not line:
             # hunk 外の区切り用空行は許可する。hunk 本文中の空行は
             # _read_hunk が記号付きかどうかを別に厳密検査する。
-            index += 1
+            lines.pop()
             continue
         if state is not None and "git_paths" in state and "headers" not in state:
             # Git メタデータは diff --git と本文用ヘッダの間だけに許可する。
@@ -505,15 +544,23 @@ def parse_patch(text: str) -> list[dict]:
                     if not re.fullmatch(r"[0-9a-fA-F]+\.\.[0-9a-fA-F]+(?: [0-7]{6})?", value):
                         raise ValueError("パッチの index 行が不正です")
                 state["metadata"][key] = value
-                index += 1
+                lines.pop()
                 continue
         # どの既知形式にも当てはまらない行は、位置と先頭部分を添えて拒否する。
-        raise ValueError(f"未対応または不正なパッチ行です（{index + 1} 行目）: {line[:100]!r}")
+        raise ValueError(f"未対応または不正なパッチ行です（{lines.number + 1} 行目）: {line[:100]!r}")
     if state is not None:
         # 最後のファイルには次ヘッダが来ないので、終端で確定する。
-        entries.append(_finish_entry(state))
+        yield _finish_entry(state)
+
+
+def iter_patch(text):
+    """一ファイルずつ検査して返す。全件消費した時点でパッチ全体の検査が完了する。
+
+    本文・hunkを全ファイル分蓄積せず、重複検出用のパス集合だけを保持する。
+    途中で反復を中止すると後続の不正は未検査になるため、呼出側は最後まで読む。
+    """
     seen_old, seen_new, seen_display = set(), set(), set()
-    for entry in entries:
+    for entry in _parse_entries(text):
         old, new = entry["old_path"], entry["new_path"]
         display = new or old
         # 削除ファイルは旧名、それ以外は新名で表示されるため、
@@ -531,7 +578,9 @@ def parse_patch(text: str) -> list[dict]:
             seen_old.add(old)
         seen_new.add(new)
         seen_display.add(display)
-    return entries
+        yield entry
+        # 次のファイルを解析する前に、前のhunkの最後の参照も手放す。
+        del entry
 
 
 def _text_lines(text: str) -> list[tuple[str, bool]]:
@@ -560,7 +609,7 @@ def _context_row(old_number: int, new_number: int, content: tuple[str, bool]) ->
     """パッチ外の未変更行を表す、新しい表示行辞書を返す。
 
     old_number / new_number は 1 始まりの行番号、content は _text_lines の一要素。
-    旧新ともに行番号を持つ context 行を作る。BOM は build_rows 最後の
+    旧新ともに行番号を持つ context 行を作る。BOM は iter_build_rows の
     版別正規化まで残すため、ここでは内容をそのままコピーする。
     入力変更・外部への副作用はなく、契約どおりの入力に対する独自例外はない。
     """
@@ -591,6 +640,10 @@ def build_rows(entry: dict, current_text: str | None) -> list[dict]:
     末尾改行が一致しない場合は ValueError。現在ファイルの実際の存在確認と
     文字コードの復号は、文字列を渡す呼び出し元が担当する。
     """
+    return list(iter_build_rows(entry, current_text))
+
+
+def _raw_rows(entry, current_text):
     path = entry["new_path"] or entry["old_path"]
     if entry["new_path"] is None:
         if current_text is not None:
@@ -610,7 +663,6 @@ def build_rows(entry: dict, current_text: str | None) -> list[dict]:
         # 旧総行数が負になるパッチは不正。新規ファイルは旧総行数が必ず 0。
         # これにより、新規パッチに書かれていない現在行の見落としも検出する。
         raise ValueError(f"追加・削除の行数と現在の本文が一致しません: {path}")
-    rows = []
     # 以後の番号は「次に処理する行」を指す 1 始まり。配列位置とは 1 だけ違う。
     old_number = new_number = 1
     for hunk in hunks:
@@ -621,7 +673,7 @@ def build_rows(entry: dict, current_text: str | None) -> list[dict]:
             raise ValueError(f"hunk が現在の本文の範囲を超えています: {path}")
         # hunk 間の本文は現在のファイルからそのまま補う。
         while new_number - 1 < new_index:
-            rows.append(_context_row(old_number, new_number, current[new_number - 1]))
+            yield _context_row(old_number, new_number, current[new_number - 1])
             old_number += 1
             new_number += 1
         for line in hunk["lines"]:
@@ -638,23 +690,25 @@ def build_rows(entry: dict, current_text: str | None) -> list[dict]:
                     line_text, line["newline"],
                 ):
                     raise ValueError(f"パッチと現在の本文が一致しません: {path} の新 {new_number} 行目")
-            rows.append({
+            yield {
                 # 存在しない版の番号は 0 等ではなく None にし、誤参照を防ぐ。
                 "old": old_number if kind != "added" else None,
                 "new": new_number if kind != "removed" else None,
                 "kind": kind, "text": line_text, "newline": line["newline"],
-            })
+            }
             old_number += kind != "added"
             new_number += kind != "removed"
     # 最後の hunk より後ろにも全文が続く。パッチにない末尾を省略しない。
     while new_number <= len(current):
-        rows.append(_context_row(old_number, new_number, current[new_number - 1]))
+        yield _context_row(old_number, new_number, current[new_number - 1])
         old_number += 1
         new_number += 1
+def iter_build_rows(entry, current_text):
+    """照合済み行を順に返す。検査を完了するには最後まで反復する。"""
     # raw 本文での照合が済んだ後、旧新それぞれの先頭 BOM だけを除去する。
     # 先頭行の移動で同じ文脈行の表示が旧新で異なる場合だけ old_text を持つ。
     # これにより前後行のない U0 パッチでも旧版を正確に復元できる。
-    for row in rows:
+    for row in _raw_rows(entry, current_text):
         raw_text = row["text"]
         # 版ごとの行番号 1 だけを対象にする。同じ U+FEFF でも途中の行なら
         # ソース文字の一部なので残す。二重 BOM でも除去するのは先頭の一つ。
@@ -665,4 +719,4 @@ def build_rows(entry: dict, current_text: str | None) -> list[dict]:
             # 旧版のハッシュ・ハイライト等は old_text を優先して復元する。
             # 同じ内容の大半の行には、この追加フィールドを持たせない。
             row["old_text"] = old_text
-    return rows
+        yield row

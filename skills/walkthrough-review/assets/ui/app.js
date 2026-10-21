@@ -12,7 +12,7 @@
   let data;
   try {
     data = JSON.parse($("review-data").textContent);
-    if (data.schema_version !== 1 || !Array.isArray(data.files) || !Array.isArray(data.inventory)) throw new Error("未対応のデータ形式です。");
+    if (data.schema_version !== 2 || !Array.isArray(data.files) || !Array.isArray(data.inventory)) throw new Error("未対応のデータ形式です。");
   } catch (error) {
     const alert = node("div", "fatal-error", `レビューデータを読み込めませんでした。HTMLを再生成してください。\n${error.message}`);
     alert.setAttribute("role", "alert");
@@ -23,7 +23,7 @@
   const fileMap = new Map(data.files.map((file) => [file.path, file]));
   const inventoryMap = new Map(data.inventory.map((item) => [item.path, item]));
   const excluded = data.inventory.filter(isVisibleExcluded);
-  const state = { file: null, path: null, filter: "selected", sync: true, source: null, anchors: [], scrollMaps: null, commentEntries: [], activeComment: -1, question: null, rowElements: [], rowMaps: { old: new Map(), new: new Map() }, suppressUntil: 0, frame: null };
+  const state = { file: null, path: null, filter: "selected", sync: true, source: null, anchors: [], scrollMaps: null, commentEntries: [], activeComment: -1, question: null, rows: [], rendering: false, renderVersion: 0, pendingFocus: null, rowElements: new Map(), rowMaps: { old: new Map(), new: new Map() }, rowHeight: 25, windowStart: -1, windowEnd: -1, highlighted: null, selection: null, highlightJob: null, printing: false, suppressUntil: 0, frame: null };
   const statuses = { file: "通常ファイル", deleted: "削除済み", symlink: "シンボリックリンク", unreadable: "読み取り不可", error: "読み取りエラー", binary: "バイナリ", directory: "ディレクトリ", other: "特殊ファイル" };
   const statusLabel = (status) => statuses[status] || status || "ファイル";
   const prettySize = (size) => typeof size !== "number" ? "サイズ不明" : size < 1024 ? `${size} B` : size < 1048576 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1048576).toFixed(1)} MB`;
@@ -134,21 +134,20 @@
   function renderTree() {
     const query = $("file-search").value.trim().toLocaleLowerCase();
     const folderStates = new Map([...$("file-tree").querySelectorAll("details")].map((item) => [item.dataset.folder, item.open]));
-    const root = { folders: new Map(), files: [] };
+    const root = { folders: new Map(), files: [], count: 0 };
     let count = 0;
     for (const item of data.inventory) {
       if (state.filter === "selected" && !item.selected || state.filter === "excluded" && !isVisibleExcluded(item)) continue;
       if (query && !item.path.toLocaleLowerCase().includes(query)) continue;
       count++;
       const parts = item.path.split("/");
-      let branch = root;
+      let branch = root; branch.count++;
       for (const part of parts.slice(0, -1)) {
-        if (!branch.folders.has(part)) branch.folders.set(part, { folders: new Map(), files: [] });
-        branch = branch.folders.get(part);
+        if (!branch.folders.has(part)) branch.folders.set(part, { folders: new Map(), files: [], count: 0 });
+        branch = branch.folders.get(part); branch.count++;
       }
       branch.files.push(item);
     }
-    const folderCount = (branch) => branch.files.length + [...branch.folders.values()].reduce((sum, child) => sum + folderCount(child), 0);
     function list(branch, prefix, depth) {
       const ul = node("ul", "tree-list");
       for (const [name, child] of [...branch.folders.entries()].sort(([a], [b]) => a.localeCompare(b))) {
@@ -156,7 +155,7 @@
         const path = prefix ? `${prefix}/${name}` : name;
         details.dataset.folder = path;
         details.open = query ? true : folderStates.has(path) ? folderStates.get(path) : depth < 2;
-        summary.append(node("span", "folder-name", name), node("span", "folder-count", folderCount(child)));
+        summary.append(node("span", "folder-name", name), node("span", "folder-count", child.count));
         details.append(summary, list(child, path, depth + 1));
         li.append(details); ul.append(li);
       }
@@ -211,31 +210,92 @@
     $("generation-meta").textContent = `${data.project_root || data.project_name} · 生成 ${dateLabel}`;
   }
 
-  /* トークンのspanを行境界で閉じて開き直し、複数行文字列の色を保つ。 */
-  function highlightedLines(file) {
-    const aliases = { js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript", py: "python", html: "markup", xml: "markup", svg: "markup", sh: "bash", shell: "bash", yml: "yaml" };
-    const language = aliases[file.language] || file.language;
-    const grammar = window.Prism && window.Prism.languages[language];
-    if (!grammar) return file.rows.map((row) => escapeHTML(row.text));
+  // 行オブジェクトは閲覧中のファイルだけに展開し、保存データへは書き戻さない。
+  function expandRows(file) {
+    const rows = [];
+    for (const block of file.blocks) {
+      const lines = block.text.replace(/\n$/, "").split("\n"), finalNewline = block.text.endsWith("\n");
+      lines.forEach((text, index) => {
+        const row = {
+          old: block.old_start == null ? null : block.old_start + index,
+          new: block.new_start == null ? null : block.new_start + index,
+          kind: block.kind, text, newline: index < lines.length - 1 || finalNewline,
+        };
+        if (block.old_text != null) row.old_text = block.old_text.replace(/\n$/, "");
+        rows.push(row);
+      });
+    }
+    return rows;
+  }
+
+  // 再訪時の字句解析を省く。大量のファイルを読んでもキャッシュを増やし続けない。
+  const highlightCache = new Map();
+  let highlightCacheSize = 0;
+  function rememberHighlight(path, result) {
+    const size = Object.values(result).reduce((sum, lines) => sum + lines.reduce((total, line) => total + line.length, 0), 0);
+    const previous = highlightCache.get(path);
+    if (previous) { highlightCacheSize -= previous.size; highlightCache.delete(path); }
+    if (size > 8000000) return result;
+    while (highlightCache.size && (highlightCache.size >= 2 || highlightCacheSize + size > 8000000)) {
+      const oldest = highlightCache.keys().next().value;
+      highlightCacheSize -= highlightCache.get(oldest).size;
+      highlightCache.delete(oldest);
+    }
+    highlightCache.set(path, { result, size });
+    highlightCacheSize += size;
+    return result;
+  }
+
+  function cancelHighlight() {
+    const job = state.highlightJob;
+    if (!job) return;
+    job.worker.terminate(); clearTimeout(job.timer); URL.revokeObjectURL(job.url);
+    state.highlightJob = null;
+  }
+
+  function requestHighlight(file, version) {
+    const cached = highlightCache.get(file.path);
+    if (cached) {
+      highlightCache.delete(file.path); highlightCache.set(file.path, cached);
+      state.highlighted = cached.result;
+      paintVisibleCode();
+      return;
+    }
+    if (!window.Worker || file.language === "plain") return;
+    let url;
     try {
-      function highlightSide(side) {
-        const rows = file.rows.filter((row) => row[side] != null);
-        const html = window.Prism.highlight(rows.map((row) => side === "old" ? row.old_text ?? row.text : row.text).join("\n"), grammar, language);
-        const open = [], result = new Map();
-        html.split("\n").forEach((line, index) => {
-          const prefix = open.join("");
-          for (const tag of line.match(/<\/?span\b[^>]*>/g) || []) {
-            if (tag.startsWith("</")) open.pop(); else open.push(tag);
-          }
-          if (rows[index]) result.set(rows[index][side], prefix + line + "</span>".repeat(open.length));
-        });
-        return result;
+      const source = JSON.parse($("highlight-worker-source").textContent);
+      url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+      const worker = new Worker(url);
+      const timer = setTimeout(cancelHighlight, 15000);
+      state.highlightJob = { worker, url, timer };
+      worker.onmessage = ({ data: result }) => {
+        if (version !== state.renderVersion || state.highlightJob?.worker !== worker) return;
+        cancelHighlight();
+        if (result) { state.highlighted = rememberHighlight(file.path, result); paintVisibleCode(); }
+      };
+      worker.onerror = () => { if (state.highlightJob?.worker === worker) cancelHighlight(); };
+      const sources = {};
+      for (const side of file.blocks.some((block) => block.kind === "removed") ? ["new", "old"] : ["new"]) {
+        sources[side] = file.blocks.filter((block) => block[`${side}_start`] != null).map((block) => side === "old" ? block.old_text ?? block.text : block.text).join("");
       }
-      // 削除行を変更後コードに混ぜず、それぞれの版で字句解析する。
-      const current = highlightSide("new");
-      const previous = file.rows.some((row) => row.kind === "removed") ? highlightSide("old") : new Map();
-      return file.rows.map((row) => (row.new == null ? previous.get(row.old) : current.get(row.new)) || escapeHTML(row.text));
-    } catch (_) { return file.rows.map((row) => escapeHTML(row.text)); }
+      worker.postMessage({ language: file.language, sources });
+    } catch (_) {
+      cancelHighlight();
+      if (url) URL.revokeObjectURL(url);
+      // Workerを使えない環境でも本文・参照・質問はすぐに利用できる。
+    }
+  }
+
+  function paintCode(element, row) {
+    const side = row.new == null ? "old" : "new";
+    const code = element.querySelector(".code-text");
+    code.innerHTML = state.highlighted?.[side]?.[row[side] - 1] ?? escapeHTML(row.text || " ");
+    if (row.newline === false) code.append(node("span", "newline-marker", "  ↵ 末尾改行なし"));
+  }
+
+  function paintVisibleCode() {
+    for (const [index, element] of state.rowElements) paintCode(element, state.rows[index]);
   }
 
   function rowIndexFor(line, side = "new") {
@@ -255,51 +315,133 @@
     $("diff-summary-list").replaceChildren(...summary.map((item) => node("li", "", item)));
   }
 
-  function renderCode(file) {
-    const fragment = document.createDocumentFragment(), highlighted = highlightedLines(file), isDiff = data.mode === "diff";
-    renderDiffSummary(file);
-    state.rowElements = [];
-    state.rowMaps = { old: new Map(), new: new Map() };
-    file.rows.forEach((row, index) => {
-      for (const side of ["old", "new"]) if (row[side] != null) state.rowMaps[side].set(row[side], index);
-      const element = node("div", `code-row ${row.kind}${isDiff ? "" : " full-mode"}`);
-      element.dataset.rowIndex = index;
-      const number = (value, side) => {
-        const label = node("button", "line-number", value == null ? "" : value);
-        label.type = "button"; label.disabled = value == null;
-        if (value != null) {
-          label.setAttribute("aria-label", `${side === "old" ? "旧" : "新"} ${value} 行へのリンク`);
-          label.title = `${side === "old" ? "旧" : "新"} ${value} 行`;
-          label.addEventListener("click", () => navigate(file.path, value, side));
-        }
-        return label;
-      };
-      if (isDiff) element.append(number(row.old, "old"));
-      element.append(number(row.new, "new"), node("span", "line-sign", row.kind === "added" ? "+" : row.kind === "removed" ? "−" : ""));
-      const code = node("code", "code-text");
-      code.innerHTML = highlighted[index] || " ";
-      if (row.newline === false) code.append(node("span", "newline-marker", "  ↵ 末尾改行なし"));
-      const ask = node("button", "ask-line", "?");
-      ask.type = "button";
-      ask.title = "この行について質問";
-      ask.setAttribute("aria-label", `${row.new == null ? "旧" : "新"} ${row.new ?? row.old} 行について質問`);
-      ask.addEventListener("click", () => openQuestion({ side: row.new == null ? "old" : "new", start: row.new ?? row.old, end: row.new ?? row.old }));
-      element.append(code, ask); fragment.append(element); state.rowElements.push(element);
-    });
-    $("code-rows").replaceChildren(fragment);
-    if (!file.rows.length) $("code-rows").append(node("div", "empty-state", "空のファイルです。"));
-    $("line-columns").textContent = isDiff ? "旧行 / 新行" : "行番号";
-    document.querySelectorAll(".diff-only").forEach((element) => { element.hidden = !isDiff; });
-    const additions = file.rows.filter((row) => row.kind === "added").length, removals = file.rows.filter((row) => row.kind === "removed").length;
-    const currentLines = file.rows.filter((row) => row.new != null).length;
-    $("code-status").textContent = isDiff ? `${currentLines} 行 · +${additions} / −${removals}` : `${currentLines} 行 · ${file.language || "text"}`;
-    $("file-meta").textContent = `${file.language || "text"} · ${currentLines} 行`;
-    $("selection-label").textContent = "";
-    $("code-scroll").scrollTop = 0;
-    $("code-scroll").scrollLeft = 0;
+  function visibleRows(total, scrollTop, height, rowHeight) {
+    const start = Math.max(0, Math.min(total, Math.floor(Math.max(0, scrollTop - 6) / rowHeight) - 20));
+    const end = Math.max(start, Math.min(total, Math.ceil((scrollTop + height) / rowHeight) + 20));
+    return { start, end };
   }
 
-  /* SVGは画像として隔離し、MarkdownのHTML許可やページのDOMを広げない。 */
+  function rowTop(index) { return 6 + index * state.rowHeight; }
+
+  function updateRowClasses() {
+    const active = state.commentEntries[state.activeComment];
+    for (const [index, element] of state.rowElements) {
+      const row = state.rows[index], selection = state.selection;
+      element.classList.toggle("highlighted", !!selection && row[selection.side] != null && index >= selection.start && index <= selection.end);
+      element.classList.toggle("active-range", !!active && !active.invalidRange && row[active.side] != null && index >= active.start && index <= active.end);
+    }
+  }
+
+  function createCodeRow(index) {
+    const row = state.rows[index], isDiff = data.mode === "diff";
+    const element = node("div", `code-row ${row.kind}${isDiff ? "" : " full-mode"}`);
+    element.dataset.rowIndex = index;
+    const number = (value, side) => {
+      const label = node("button", "line-number", value == null ? "" : value);
+      label.type = "button"; label.disabled = value == null;
+      if (value != null) {
+        label.dataset.line = value; label.dataset.side = side;
+        label.setAttribute("aria-label", `${side === "old" ? "旧" : "新"} ${value} 行へのリンク`);
+        label.title = `${side === "old" ? "旧" : "新"} ${value} 行`;
+      }
+      return label;
+    };
+    if (isDiff) element.append(number(row.old, "old"));
+    element.append(number(row.new, "new"), node("span", "line-sign", row.kind === "added" ? "+" : row.kind === "removed" ? "−" : ""));
+    const ask = node("button", "ask-line", "?");
+    ask.type = "button"; ask.dataset.askRow = index;
+    ask.title = "この行について質問";
+    ask.setAttribute("aria-label", `${row.new == null ? "旧" : "新"} ${row.new ?? row.old} 行について質問`);
+    element.append(node("code", "code-text"), ask);
+    paintCode(element, row);
+    return element;
+  }
+
+  function renderCodeWindow(force = false) {
+    if (!state.file || state.rendering || !state.rows.length) return;
+    const scroller = $("code-scroll"), target = $("code-rows");
+    const { start, end } = state.printing ? { start: 0, end: state.rows.length } : visibleRows(state.rows.length, scroller.scrollTop, scroller.clientHeight, state.rowHeight);
+    if (!force && start === state.windowStart && end === state.windowEnd) return;
+    // 一度表示した横幅を保ち、短い行へ移った際に横スクロールが戻るのを防ぐ。
+    state.codeWidth = Math.max(state.codeWidth || 0, target.scrollWidth);
+    if (state.codeWidth) target.style.minWidth = `${state.codeWidth}px`;
+    for (const [index, element] of state.rowElements) if (index < start || index >= end) {
+      if (element.contains(document.activeElement)) scroller.focus({ preventScroll: true });
+      element.remove(); state.rowElements.delete(index);
+    }
+    let next = state.bottomSpacer;
+    for (let index = end - 1; index >= start; index--) {
+      let element = state.rowElements.get(index);
+      if (!element) {
+        element = createCodeRow(index);
+        target.insertBefore(element, next); state.rowElements.set(index, element);
+      }
+      next = element;
+    }
+    state.topSpacer.style.height = `${start * state.rowHeight}px`;
+    state.bottomSpacer.style.height = `${(state.rows.length - end) * state.rowHeight}px`;
+    state.windowStart = start; state.windowEnd = end;
+    updateRowClasses();
+  }
+
+  function refreshCodeLayout() {
+    if (state.file && !state.rendering && !state.printing) {
+      const height = parseFloat(getComputedStyle($("code-scroll")).getPropertyValue("--code-row-height")) || 25;
+      if (height !== state.rowHeight) {
+        $("code-scroll").scrollTop = ($("code-scroll").scrollTop - 6) * height / state.rowHeight + 6;
+        state.rowHeight = height;
+      }
+      renderCodeWindow(true);
+    }
+    refreshAnchors();
+  }
+
+  async function renderCode(file) {
+    const version = state.renderVersion, rows = state.rows, isDiff = data.mode === "diff";
+    renderDiffSummary(file);
+    state.rowElements = new Map();
+    state.rowMaps = { old: new Map(), new: new Map() };
+    rows.forEach((row, index) => {
+      for (const side of ["old", "new"]) if (row[side] != null) state.rowMaps[side].set(row[side], index);
+    });
+    const target = $("code-rows"), scroller = $("code-scroll");
+    target.replaceChildren();
+    target.style.minWidth = "";
+    state.codeWidth = 0; state.windowStart = -1; state.windowEnd = -1;
+    state.topSpacer = node("div", "code-spacer"); state.bottomSpacer = node("div", "code-spacer");
+    for (const spacer of [state.topSpacer, state.bottomSpacer]) spacer.setAttribute("aria-hidden", "true");
+    target.append(state.topSpacer, state.bottomSpacer);
+    state.rowHeight = parseFloat(getComputedStyle(scroller).getPropertyValue("--code-row-height")) || 25;
+    state.rendering = true;
+    scroller.setAttribute("aria-busy", "true");
+    scroller.scrollTop = 0; scroller.scrollLeft = 0;
+    $("line-columns").textContent = isDiff ? "旧行 / 新行" : "行番号";
+    document.querySelectorAll(".diff-only").forEach((element) => { element.hidden = !isDiff; });
+    let additions = 0, removals = 0, currentLines = 0;
+    for (const row of rows) {
+      if (row.kind === "added") additions++;
+      if (row.kind === "removed") removals++;
+      if (row.new != null) currentLines++;
+    }
+    $("file-meta").textContent = `${file.language || "text"} · ${currentLines} 行`;
+    $("selection-label").textContent = "";
+    $("code-status").textContent = "コードを読み込み中…";
+    // 表示切替・ユーザー入力を先に処理し、古い非同期描画は世代番号で破棄する。
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (version !== state.renderVersion) return false;
+    state.rendering = false;
+    if (!rows.length) target.replaceChildren(node("div", "empty-state", "空のファイルです。"));
+    else renderCodeWindow();
+    scroller.setAttribute("aria-busy", "false");
+    $("code-status").textContent = isDiff ? `${currentLines} 行 · +${additions} / −${removals}` : `${currentLines} 行 · ${file.language || "text"}`;
+    refreshAnchors();
+    const pending = state.pendingFocus;
+    state.pendingFocus = null;
+    if (pending) focusRange(...pending);
+    requestHighlight(file, version);
+    return true;
+  }
+
   function renderDiagram(diagram, expanded = false) {
     const value = diagram && typeof diagram === "object" ? diagram : {};
     const title = value.title || "図";
@@ -408,16 +550,13 @@
     const previous = state.commentEntries[state.activeComment];
     if (previous) {
       previous.card.classList.remove("active");
-      if (!previous.invalidRange) for (let i = previous.start; i <= previous.end; i++) state.rowElements[i]?.classList.remove("active-range");
     }
     state.activeComment = index;
     const active = state.commentEntries[index];
     if (active) {
       active.card.classList.add("active");
-      if (!active.invalidRange) for (let i = active.start; i <= active.end; i++) {
-        if (state.file.rows[i]?.[active.side] != null) state.rowElements[i]?.classList.add("active-range");
-      }
     }
+    updateRowClasses();
   }
 
   /* 到達可能なスクロール位置へそろえ、方向ごとの折れ線を作る純粋関数。
@@ -455,13 +594,13 @@
   }
 
   function refreshAnchors() {
-    if (!state.file) return;
-    const code = $("code-scroll"), detail = $("detail-scroll"), codeRect = code.getBoundingClientRect(), detailRect = detail.getBoundingClientRect();
+    if (!state.file || state.rendering) return;
+    const code = $("code-scroll"), detail = $("detail-scroll"), detailRect = detail.getBoundingClientRect();
     const anchors = [];
     for (let index = 0; index < state.commentEntries.length; index++) {
-      const entry = state.commentEntries[index], row = state.rowElements[entry.start];
-      if (!row || entry.invalidRange) continue;
-      const codeY = row.getBoundingClientRect().top - codeRect.top + code.scrollTop;
+      const entry = state.commentEntries[index];
+      if (entry.invalidRange) continue;
+      const codeY = rowTop(entry.start);
       const detailY = entry.card.getBoundingClientRect().top - detailRect.top + detail.scrollTop;
       anchors.push({ code: Math.max(0, codeY - 12), detail: Math.max(0, detailY - 12), index });
     }
@@ -470,7 +609,7 @@
   }
 
   function syncScroll(source) {
-    if (!state.file || !state.commentEntries.length || performance.now() < state.suppressUntil) return;
+    if (!state.file || state.rendering || !state.commentEntries.length || performance.now() < state.suppressUntil) return;
     const from = source === "code" ? $("code-scroll") : $("detail-scroll");
     const target = source === "code" ? $("detail-scroll") : $("code-scroll");
     const value = from.scrollTop;
@@ -492,22 +631,36 @@
     if (Math.abs(target.scrollTop - desired) > 1) {
       state.source = source;
       target.scrollTop = desired;
+      if (source === "detail") renderCodeWindow();
     }
   }
 
   function onScroll(source) {
-    if (state.source && state.source !== source) { state.source = null; return; }
+    const mirrored = state.source && state.source !== source;
     state.source = null;
     if (state.frame) cancelAnimationFrame(state.frame);
-    state.frame = requestAnimationFrame(() => { state.frame = null; syncScroll(source); });
+    state.frame = requestAnimationFrame(() => { state.frame = null; renderCodeWindow(); if (!mirrored) syncScroll(source); });
   }
 
   function show(path, line, side = "new", end, commentId) {
     state.suppressUntil = performance.now() + 80;
     state.source = null;
+    state.renderVersion++;
+    cancelHighlight();
+    state.highlighted = null; state.selection = null;
+    state.rendering = false;
+    state.pendingFocus = null;
     state.path = path || null;
     state.file = path ? fileMap.get(path) || null : null;
     const file = state.file;
+    state.rows = file ? expandRows(file) : [];
+    state.rowElements = new Map();
+    if (!file) {
+      state.rowMaps = { old: new Map(), new: new Map() };
+      state.commentEntries = []; state.anchors = []; state.scrollMaps = null;
+      $("code-rows").replaceChildren(); $("comments-view").replaceChildren();
+      $("code-scroll").setAttribute("aria-busy", "false");
+    }
     $("home-button").classList.toggle("active", !path);
     $("overview-view").hidden = !!path;
     $("code-view").hidden = !file;
@@ -522,12 +675,9 @@
     $("file-meta").textContent = "";
     $("detail-footer").textContent = file ? "行範囲に対応した解説 · 質問はエージェントへ" : "全ファイル一覧と対象リストを照合";
     if (file) {
+      if (line) state.pendingFocus = [Number(line), side, Number(end || line), true, commentId];
       renderCode(file);
       renderComments(file);
-      requestAnimationFrame(() => {
-        refreshAnchors();
-        if (line) focusRange(Number(line), side, Number(end || line), true, commentId);
-      });
     } else if (path) {
       const item = inventoryMap.get(path);
       $("unavailable-title").textContent = item ? item.selected ? "コードを表示できないファイル" : "レビュー対象外のファイル" : "ファイルが見つかりません";
@@ -559,12 +709,16 @@
   }
 
   function focusRange(start, side, end, withComment, commentId) {
+    if (state.rendering) { state.pendingFocus = [start, side, end, withComment, commentId]; return; }
     const index = rowIndexFor(start, side), last = rowIndexFor(end, side);
     if (index < 0) { announce("参照する行が見つかりません。"); return; }
     state.suppressUntil = performance.now() + 100;
-    state.rowElements.forEach((row, i) => row.classList.toggle("highlighted", state.file.rows[i][side] != null && i >= index && i <= (last < 0 ? index : last)));
-    const scroller = $("code-scroll"), row = state.rowElements[index];
-    scroller.scrollTop += row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 34;
+    state.selection = { side, start: index, end: last < 0 ? index : last };
+    const scroller = $("code-scroll");
+    scroller.scrollLeft = 0;
+    scroller.scrollTop = Math.max(0, rowTop(index) - 34);
+    renderCodeWindow();
+    updateRowClasses();
     $("selection-label").textContent = rangeLabel(start, end, side);
     if (withComment) {
       const commentIndex = chooseCommentIndex(state.commentEntries, index, side, commentId);
@@ -598,7 +752,7 @@
   }
 
   function openQuestion(context) {
-    state.question = { ...context, file: state.file };
+    state.question = { ...context, file: state.file, rows: state.rows };
     $("question-reference").textContent = `${state.file.path}${context.start ? ` · ${rangeLabel(context.start, context.end, context.side)}` : ` · ファイル全体${context.side === "old" ? "（旧版）" : ""}`}${context.comment ? ` · ${context.comment.title}` : ""}`;
     $("question-input").value = "";
     $("prompt-output").value = "";
@@ -610,9 +764,9 @@
   }
 
   function buildPrompt(question, context) {
-    const file = context.file;
+    const file = context.file, rows = context.rows || expandRows(file);
     const rangeMissing = context.comment?.range_status === "missing";
-    const relevant = rangeMissing ? [] : context.start ? file.rows.filter((row) => row[context.side] != null && row[context.side] >= context.start && row[context.side] <= context.end) : file.rows;
+    const relevant = rangeMissing ? [] : context.start ? rows.filter((row) => row[context.side] != null && row[context.side] >= context.start && row[context.side] <= context.end) : rows;
     const code = relevant.map((row) => `${row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " "} [旧:${row.old ?? "—"} 新:${row.new ?? "—"}] ${context.side === "old" ? row.old_text ?? row.text : row.text}${row.newline === false ? "\n\\ No newline at end of file" : ""}`).join("\n");
     const maxBackticks = (code.match(/`+/g) || []).reduce((longest, item) => Math.max(longest, item.length), 2);
     const fence = "`".repeat(maxBackticks + 1);
@@ -694,6 +848,15 @@
     announce(`スクロール連動を${state.sync ? "有効" : "無効"}にしました。`);
   });
   $("code-scroll").addEventListener("scroll", () => onScroll("code"), { passive: true });
+  $("code-rows").addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button || button.disabled || !state.file) return;
+    if (button.dataset.line) navigate(state.file.path, Number(button.dataset.line), button.dataset.side);
+    else if (button.dataset.askRow != null) {
+      const row = state.rows[Number(button.dataset.askRow)];
+      if (row) openQuestion({ side: row.new == null ? "old" : "new", start: row.new ?? row.old, end: row.new ?? row.old });
+    }
+  });
   $("detail-scroll").addEventListener("scroll", () => onScroll("detail"), { passive: true });
   for (const id of ["code-scroll", "detail-scroll"]) {
     $(id).addEventListener("wheel", () => { state.source = null; }, { passive: true });
@@ -708,6 +871,7 @@
     }
   });
   $("close-question").addEventListener("click", () => $("question-dialog").close());
+  $("question-dialog").addEventListener("close", () => { state.question = null; });
   $("question-dialog").addEventListener("click", (event) => {
     if (event.target === $("question-dialog")) {
       const rect = event.target.getBoundingClientRect();
@@ -744,9 +908,11 @@
     if (event.key === "Escape" && !$("question-dialog").open) { $("file-sidebar").classList.remove("is-open"); $("toggle-tree").setAttribute("aria-expanded", "false"); }
   });
   window.addEventListener("hashchange", fromHash);
-  window.addEventListener("resize", () => requestAnimationFrame(refreshAnchors));
+  window.addEventListener("resize", () => requestAnimationFrame(refreshCodeLayout));
+  window.addEventListener("beforeprint", () => { state.printing = true; renderCodeWindow(true); });
+  window.addEventListener("afterprint", () => { state.printing = false; refreshCodeLayout(); });
   if (window.ResizeObserver) {
-    const scrollObserver = new ResizeObserver(() => requestAnimationFrame(refreshAnchors));
+    const scrollObserver = new ResizeObserver(() => requestAnimationFrame(refreshCodeLayout));
     for (const id of ["comments-view", "code-scroll", "detail-scroll"]) scrollObserver.observe($(id));
   }
   renderOverview();

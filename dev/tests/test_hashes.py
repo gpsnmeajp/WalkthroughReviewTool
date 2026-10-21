@@ -287,16 +287,13 @@ class CommentHashTests(unittest.TestCase):
         self.assertFalse(review["hash_warnings"])
         self.assertEqual(len(review["files"][0]["comments"]), 1)
 
-    def test_saved_text_and_rows_must_agree(self):
-        """生成済みreviewのtextだけを書き換え、rowsとの矛盾を意図的に作る。
-
-        マージ時に片方だけを信じて照合済みとせず、ValueErrorを要求する。
-        保存データの内部不整合から誤ったハッシュ保証を作らないための検証。
-        """
-        review = self.review()
-        review["files"][0]["text"] = "modified separately\n"
-        with self.assertRaises(ValueError):
-            self.merge(review, self.comment(digest("first\nsecond\n")))
+    def test_legacy_duplicate_text_and_rows_are_rejected(self):
+        """本文の正本はblocksだけとし、旧形式を併記した保存データは拒否する。"""
+        for key in ("text", "rows"):
+            review = self.review()
+            review["files"][0][key] = "modified separately\n"
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                self.merge(review, self.comment(digest("first\nsecond\n")))
 
     def test_rebuild_into_other_project_output_is_rejected(self):
         """reviewをdeepcopyし、コピー側のproject_rootだけを別フォルダへ変える。

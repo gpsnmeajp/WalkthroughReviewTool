@@ -166,13 +166,13 @@ class WalkthroughTests(unittest.TestCase):
         """
         full = self.review()["files"][0]
         changed = self.review(patch=self.patch)["files"][0]
-        self.assertEqual(full["text"], "before\nnew\nafter\n")
-        self.assertEqual(changed["text"], full["text"])
-        self.assertEqual([row["text"] for row in changed["rows"]], ["before", "old", "new", "after"])
-        self.assertEqual([row["kind"] for row in changed["rows"]], [
+        self.assertEqual(walkthrough.file_text(full), "before\nnew\nafter\n")
+        self.assertEqual(walkthrough.file_text(changed), walkthrough.file_text(full))
+        self.assertEqual([row["text"] for row in list(walkthrough.iter_rows(changed))], ["before", "old", "new", "after"])
+        self.assertEqual([row["kind"] for row in list(walkthrough.iter_rows(changed))], [
             "context", "removed", "added", "context",
         ])
-        self.assertEqual(changed["rows"][-1]["new"], 3)
+        self.assertEqual(list(walkthrough.iter_rows(changed))[-1]["new"], 3)
 
     @unittest.skipUnless(walkthrough.shutil.which("git"), "Gitがない環境では実Gitの無視規則検証を省略")
     def test_git_ignore_metadata_keeps_inventory_and_respects_nested_rules(self):
@@ -201,7 +201,7 @@ class WalkthroughTests(unittest.TestCase):
         self.assertFalse(nested["keep.cache"]["git_ignored"])
         # 無視対象を明示的に選んだレビューでは本文を取り込める。
         review = self.review(["日本 語.log"])
-        self.assertEqual(review["files"][0]["text"], "retained\n")
+        self.assertEqual(walkthrough.file_text(review["files"][0]), "retained\n")
         chosen = next(item for item in review["inventory"] if item["path"] == "日本 語.log")
         self.assertTrue(chosen["selected"])
         self.assertTrue(chosen["git_ignored"])
@@ -223,7 +223,7 @@ class WalkthroughTests(unittest.TestCase):
                 with mock.patch.object(walkthrough.subprocess, "run", **kwargs):
                     review = self.review()
                 self.assertEqual(len(review["inventory"]), 5)
-                self.assertEqual(review["files"][0]["text"], "before\nnew\nafter\n")
+                self.assertEqual(walkthrough.file_text(review["files"][0]), "before\nnew\nafter\n")
                 self.assertTrue(all(item["git_ignored"] is False for item in review["inventory"]))
 
     def test_unchanged_selected_file_in_diff_keeps_full_source(self):
@@ -234,8 +234,8 @@ class WalkthroughTests(unittest.TestCase):
         """
         review = self.review(["src/main.py", "src/helper.py"], self.patch)
         helper = review["files"][1]
-        self.assertEqual(helper["text"], "helper first\nhelper second\n")
-        self.assertTrue(all(row["kind"] == "context" for row in helper["rows"]))
+        self.assertEqual(walkthrough.file_text(helper), "helper first\nhelper second\n")
+        self.assertTrue(all(row["kind"] == "context" for row in walkthrough.iter_rows(helper)))
 
     def test_mode_only_diff_is_preserved_for_display_and_self_review(self):
         """行の追加削除がなくても、実行権限の差分を資料から確認できる。"""
@@ -244,7 +244,7 @@ class WalkthroughTests(unittest.TestCase):
         file = review["files"][0]
         self.assertEqual(file["diff_metadata"], {"old mode": "100644", "new mode": "100755"})
         self.assertEqual(file["diff_summary"], ["権限: 100644 → 100755"])
-        self.assertTrue(all(row["kind"] == "context" for row in file["rows"]))
+        self.assertTrue(all(row["kind"] == "context" for row in list(walkthrough.iter_rows(file))))
         self.assertIn("権限: 100644 → 100755", (self.output / "self-review.md").read_text(encoding="utf-8"))
 
     def test_rename_copy_and_empty_file_changes_have_visible_summaries(self):
@@ -277,7 +277,7 @@ class WalkthroughTests(unittest.TestCase):
         self.assertFalse(item["selected"])
         self.assertNotIn("old first", json.dumps(review))
         selected = self.review(["deleted.py"], self.patch + deletion)
-        self.assertEqual([row["text"] for row in selected["files"][0]["rows"]], [
+        self.assertEqual([row["text"] for row in walkthrough.iter_rows(selected["files"][0])], [
             "old first", "old second",
         ])
 
@@ -310,18 +310,18 @@ class WalkthroughTests(unittest.TestCase):
         original = b"\xef\xbb\xbf" + "日本語\r\n最後".encode("utf-8")
         self.write_source("src/main.py", original)
         file = self.review()["files"][0]
-        self.assertEqual(file["text"], "日本語\n最後")
-        self.assertEqual([row["text"] for row in file["rows"]], ["日本語", "最後"])
+        self.assertEqual(walkthrough.file_text(file), "日本語\n最後")
+        self.assertEqual([row["text"] for row in list(walkthrough.iter_rows(file))], ["日本語", "最後"])
         self.assertEqual(file["sha256"], hashlib.sha256(original).hexdigest())
         self.targets_path.write_bytes(b"\xef\xbb\xbf" + json.dumps({
             "files": ["src/main.py"],
         }).encode("utf-8"))
-        self.assertEqual(self.build()["files"][0]["text"], "日本語\n最後")
+        self.assertEqual(walkthrough.file_text(self.build()["files"][0]), "日本語\n最後")
         patch = (
             "--- a/src/main.py\n+++ b/src/main.py\n@@ -1 +1 @@\n"
             "-\ufeff変更前\n+\ufeff日本語\n"
         )
-        self.assertEqual(self.build(patch)["files"][0]["text"], "日本語\n最後")
+        self.assertEqual(walkthrough.file_text(self.build(patch)["files"][0]), "日本語\n最後")
 
     def test_invalid_utf8_or_binary_selected_source_is_rejected(self):
         """不正UTF-8のファイルとNULを含むファイルを別々に作る。
@@ -341,7 +341,7 @@ class WalkthroughTests(unittest.TestCase):
         実在する空行も消さないことを確認する。
         """
         self.write_source("src/main.py", "one\vpart\nlast\n\n")
-        rows = self.review()["files"][0]["rows"]
+        rows = list(walkthrough.iter_rows(self.review()["files"][0]))
         self.assertEqual([row["text"] for row in rows], ["one\vpart", "last", ""])
 
     def test_unreadable_directory_is_retained_in_inventory(self):
@@ -474,6 +474,87 @@ class WalkthroughTests(unittest.TestCase):
         ]})
         self.assertEqual(len(review["files"][0]["comments"]), 1)
 
+    def test_large_continuous_source_is_saved_once_as_one_block(self):
+        """一万行を一つの区間にし、全文・行メタ情報の二重保持を防ぐ。"""
+        text = "".join(f"value_{n} = {n}\n" for n in range(10000))
+        self.write_source("src/main.py", text)
+        review = self.review()
+        file = review["files"][0]
+        self.assertEqual(review["schema_version"], 2)
+        self.assertNotIn("text", file)
+        self.assertNotIn("rows", file)
+        self.assertEqual(file["blocks"], [{"kind": "context", "old_start": 1, "new_start": 1, "text": text}])
+        self.assertEqual(walkthrough.file_text(file), text)
+        self.assertEqual(len(list(walkthrough.iter_rows(file))), 10000)
+        encoded = json.dumps(file["blocks"], ensure_ascii=False)
+        self.assertLess(len(encoded), len(json.dumps(text)) + 100)
+
+    def test_blocks_roundtrip_empty_lines_and_unusual_characters(self):
+        """LFだけで区切り、空本文・空行・末尾改行・制御文字を正確に復元する。"""
+        for text in ("", "\n", "first\n\n", "日本語\n最後", "one\vpart\nlast\n\n"):
+            with self.subTest(text=repr(text)):
+                rows = walkthrough.plain_rows(text)
+                file = {"blocks": walkthrough.pack_rows(rows)}
+                self.assertEqual(list(walkthrough.iter_rows(file)), rows)
+                self.assertEqual(walkthrough.file_text(file), text)
+                self.assertEqual(walkthrough.file_text(file, "old"), text)
+
+    def test_blocks_preserve_diff_endings_and_bom_exceptions(self):
+        """追加・削除の末尾改行と、単独区間に閉じたBOM例外を照合する。"""
+        rows = [
+            {"kind": "added", "old": None, "new": 1, "text": "first", "newline": True},
+            {"kind": "context", "old": 1, "new": 2, "text": "\ufefforiginal", "old_text": "original", "newline": True},
+            {"kind": "removed", "old": 2, "new": None, "text": "old", "newline": False},
+            {"kind": "added", "old": None, "new": 3, "text": "new", "newline": True},
+        ]
+        file = {"blocks": walkthrough.pack_rows(rows)}
+        self.assertEqual(list(walkthrough.iter_rows(file)), rows)
+        self.assertEqual(walkthrough.file_text(file, "old"), "original\nold")
+        self.assertEqual(walkthrough.file_text(file), "first\n\ufefforiginal\nnew\n")
+        walkthrough.update_code_hashes(file)
+        self.assertEqual(file["code_hashes"]["old"], hashlib.sha256(b"original\nold").hexdigest())
+
+    def test_empty_bom_exception_keeps_the_parser_line_coordinates(self):
+        """BOMの除去後に空になる行でも、パッチの行参照を失わない。"""
+        rows = [{"kind": "context", "old": 1, "new": 1, "text": "", "old_text": "\ufeff", "newline": False}]
+        file = {"blocks": walkthrough.pack_rows(rows)}
+        self.assertEqual(list(walkthrough.iter_rows(file)), rows)
+        self.assertEqual(walkthrough.file_text(file), "")
+        self.assertEqual(walkthrough.file_text(file, "old"), "\ufeff")
+
+    def test_old_schema_is_rejected_without_rewriting_outputs(self):
+        """古い保存形式をbuild/mergeで黙って解釈せず、成果物を保持して拒否する。"""
+        review = self.build()
+        review["schema_version"] = 1
+        self.write_json(self.output / "review.json", review)
+        comments = self.root / "comments.json"
+        self.write_json(comments, {"overview": "", "comments": []})
+        before = self.output_bytes()
+        for arguments in [
+            ("build", self.project, "--targets", self.targets_path, "--output", self.output),
+            ("merge", self.output, "--comments", comments),
+        ]:
+            with self.subTest(command=arguments[0]):
+                status, _, _ = self.run_cli(*arguments)
+                self.assertEqual(status, 2)
+                self.assertEqual(self.output_bytes(), before)
+
+    def test_invalid_blocks_are_rejected_before_comment_merge(self):
+        """区分・番号の欠落や不連続、末尾改行後の続行等を拒否する。"""
+        valid = {"kind": "context", "old_start": 1, "new_start": 1, "text": "first\nsecond\n"}
+        cases = [
+            [{**valid, "kind": "unknown"}], [{**valid, "old_start": True}],
+            [{**valid, "new_start": 2}], [{**valid, "text": "first\r\n"}],
+            [{**valid, "kind": "added"}], [{**valid, "old_text": "different\ncount\n"}],
+            [{**valid, "text": "first"}, {**valid, "old_start": 2, "new_start": 2}],
+            [{k: v for k, v in valid.items() if k != "new_start"}],
+        ]
+        for blocks in cases:
+            review = self.review()
+            review["files"][0]["blocks"] = blocks
+            with self.subTest(blocks=blocks), self.assertRaises(ValueError):
+                walkthrough.merge_comments(review, {"overview": "", "comments": []})
+
     def test_all_artifacts_are_local_and_source_is_safe_in_embedded_json(self):
         """script終了タグと長いバッククォートを含む本文を実ファイルに書く。
 
@@ -481,7 +562,7 @@ class WalkthroughTests(unittest.TestCase):
         JSON復号後の本文同一性、外部URLのないHTMLを確認する。
         self-reviewのコードフェンスが本文より長く、対象外一覧も残ることを確認する。
         """
-        source = '</script><script>alert("source")</script>\n` ``` `````\n'
+        source = '</script><script>alert("source")</script>\n` ``` `````\n__REVIEW_DATA__\n__HIGHLIGHT_WORKER__\n'
         self.write_source("src/main.py", source)
         review = self.build()
         expected = {
@@ -495,8 +576,14 @@ class WalkthroughTests(unittest.TestCase):
         match = re.search(r'<script id="review-data" type="application/json">(.*?)</script>', html, re.S)
         self.assertIsNotNone(match)
         self.assertNotIn("<", match.group(1))
+        self.assertNotIn("\n", match.group(1))
+        self.assertIn("\n  ", (self.output / "review.json").read_text(encoding="utf-8"))
         self.assertEqual(json.loads(match.group(1)), review)
-        self.assertEqual(review["files"][0]["text"], source)
+        worker = re.search(r'<script id="highlight-worker-source" type="application/json">(.*?)</script>', html, re.S)
+        self.assertIn("self.onmessage", json.loads(worker.group(1)))
+        self.assertNotIn("<", worker.group(1))
+        self.assertNotIn('src="assets/vendor/prism.js"', html)
+        self.assertEqual(walkthrough.file_text(review["files"][0]), source)
         self.assertNotRegex(html, r'(?:src|href)="https?://')
         self_review = (self.output / "self-review.md").read_text(encoding="utf-8")
         self.assertIn("コード全文", self_review)
@@ -521,7 +608,7 @@ class WalkthroughTests(unittest.TestCase):
         status, _, error = self.run_cli("merge", self.output, "--comments", comments_path)
         self.assertEqual(status, 0, error)
         merged = walkthrough.read_json(self.output / "review.json")
-        self.assertEqual(merged["files"][0]["rows"], before["files"][0]["rows"])
+        self.assertEqual(merged["files"][0]["blocks"], before["files"][0]["blocks"])
         self.assertEqual(merged["files"][0]["sha256"], before["files"][0]["sha256"])
         self.assertEqual(merged["inventory"], before["inventory"])
         self.assertEqual(merged["generated_at"], before["generated_at"])
