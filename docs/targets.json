@@ -36,6 +36,7 @@
     "dev/tests/test_package_release.py",
     "dev/tests/test_package_skill.py",
     "dev/tests/test_prepare_review.py",
+    "dev/tests/test_render_svg.py",
     "dev/tests/test_scaling.py",
     "dev/tests/test_walkthrough.py",
     "dev/tests/ui_logic.test.cjs",
@@ -46,6 +47,7 @@
     "dev/tools/package_skill.py",
     "dev/tools/prepare_browser_acceptance.py",
     "dev/tools/prepare_review.py",
+    "dev/tools/render_svg.py",
     "dev/tools/vendor_assets.py",
     "dev/walkthrough.py",
     "skills/walkthrough-review/SKILL.md",
@@ -63,6 +65,7 @@
     "skills/walkthrough-review/scripts/comment_cards.py",
     "skills/walkthrough-review/scripts/diff_parser.py",
     "skills/walkthrough-review/scripts/prepare_review.py",
+    "skills/walkthrough-review/scripts/render_svg.py",
     "skills/walkthrough-review/scripts/walkthrough.py"
   ]
 }

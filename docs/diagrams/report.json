@@ -1,0 +1,30 @@
+{
+  "status": "rendered",
+  "source": "../review.json",
+  "source_sha256": "899bc393c6231f0c6760ced9b203936e488a78f3eb12ce2b5a70631d51ca9ec3",
+  "browser": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "widths": [
+    960,
+    360
+  ],
+  "diagram_count": 1,
+  "diagrams": [
+    {
+      "id": "integration-skill-workflow",
+      "file": "skills/walkthrough-review/SKILL.md",
+      "side": "new",
+      "start_line": 49,
+      "end_line": 74,
+      "code_hash": "65581830cc56decefd3b71ad29ece6eecc8a144a2be1584c2866d690fbb6b6fe",
+      "diagram_index": 1,
+      "title": "取得から自己確認、最終資料まで",
+      "description": "Pythonによる全文取得、Hash付きカードの個別作成、担当別確認、exportとmerge、最終buildと全図のPNG確認を順に行います。コードが変わった場合は説明も確認し直します。レビュー全体のブラウザー操作確認は含みません。\n",
+      "svg_sha256": "1c45149260fc995dfc839c31a61ff01312a5ed1a8a20cd9276c1b7ec5bd4cd33",
+      "svg": "diagram-0001.svg",
+      "png": "diagram-0001.png",
+      "width": 992,
+      "height": 1853
+    }
+  ],
+  "path_base": "Paths are relative to the published report.json directory."
+}

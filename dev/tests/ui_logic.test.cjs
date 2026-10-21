@@ -117,30 +117,44 @@ test("Hash状態はPythonの検証結果を使い、古いコメントは未照�
   assert.equal(commentHashInfo({ ...comment, hash_status: "verified" }, file).status, "verified");
 });
 
-test("旧行質問にエンコード済み参照・Hash比較・改行情報・安全なフェンスを含む", () => {
+test("コードの質問文はプロジェクト・パスと行範囲・質問だけにする", () => {
+  const prompt = buildPrompt("  この処理の目的は？\n  ", { file, side: "new", start: 3, end: 5 });
+  assert.equal(prompt, "プロジェクト: C:/project\n対象: src/a%20 file.py:L3–5\n\n質問:\nこの処理の目的は？");
+});
+
+test("解説の質問は本文と必要な警告を添え、ハッシュやコードは含めない", () => {
   const prompt = buildPrompt("理由は？", { file, side: "old", start: 3, end: 3, comment });
-  assert.ok(prompt.includes("review:src/a%2520%20file.py#O3"));
-  assert.ok(prompt.includes("コード不一致"));
-  assert.ok(prompt.includes("作成時コードHash: expected-hash"));
-  assert.ok(prompt.includes("表示中コードHash: old-code-hash"));
-  assert.ok(prompt.includes("\\ No newline at end of file"));
-  assert.ok(prompt.includes("````\n- [旧:3 新:—] ```old```\n\\ No newline at end of file\n````"));
-  assert.ok(!prompt.includes("new_value"));
+  assert.ok(prompt.includes("対象: src/a%20 file.py:旧 L3"));
+  assert.ok(prompt.includes("表示中のコードと不一致"));
+  for (const omitted of ["review:", "Hash", "SHA-256", "hash", "生成日時", "モード:", "レビュー:", "```old```", "new_value", "No newline", "スナップショット"]) {
+    assert.ok(!prompt.includes(omitted), omitted);
+  }
+  assert.ok(prompt.includes("解説: 削除の説明"));
   assert.ok(prompt.includes("元の設計意図"));
 });
 
-test("消えた参照範囲の質問に無関係なコードを入れない", () => {
+test("消えた参照範囲の質問には短い注意だけを添える", () => {
   const prompt = buildPrompt("説明を確認したい", { file, side: "old", start: 3, end: 3, comment: { ...comment, range_status: "missing" } });
-  assert.ok(prompt.includes("元の参照行範囲が存在しない"));
+  assert.ok(prompt.includes("この行範囲はレビューの表示中コードに存在しません"));
   assert.ok(!prompt.includes("```old```"));
   assert.ok(prompt.includes("元の設計意図"));
 });
 
-test("旧行の正規化済み文字列が別途ある場合は旧側の質問で使用する", () => {
-  const specialFile = { ...file, blocks: [{ old_start: 1, new_start: 2, kind: "context", text: "\ufefftext\n", old_text: "text\n" }] };
-  const prompt = buildPrompt("旧側を確認", { file: specialFile, side: "old", start: 1, end: 1 });
-  assert.ok(prompt.includes("[旧:1 新:2] text"));
-  assert.ok(!prompt.includes("\ufefftext"));
+test("全体質問でもコードを読み出さず、関連する解説を自動添付しない", () => {
+  const largeFile = { ...file, comments: [comment] };
+  Object.defineProperty(largeFile, "blocks", { get() { throw new Error("質問文にコードを読み出さない"); } });
+  const prompt = buildPrompt("全体の役割は？", { file: largeFile, side: "new", start: null, end: null });
+  assert.equal(prompt, "プロジェクト: C:/project\n対象: src/a%20 file.py（ファイル全体）\n\n質問:\n全体の役割は？");
+});
+
+test("正常な解説に照合表示を添えず、未照合と参照リンクの注意は短く残す", () => {
+  const verified = buildPrompt("説明を確認", { file, side: "old", start: 3, end: 3, comment: { ...comment, hash_status: "verified" } });
+  assert.ok(!verified.includes("照合"));
+  assert.ok(!verified.includes("注意"));
+  const unchecked = buildPrompt("説明を確認", { file, side: "old", start: 3, end: 3, comment: { ...comment, hash_status: "missing", link_warning: "参照先がありません" } });
+  assert.ok(unchecked.includes("コードとの対応が未照合"));
+  assert.ok(unchecked.includes("参照先がありません"));
+  assert.ok(!unchecked.includes("hash"));
 });
 
 test("本文変更なしの差分でも質問文に実行権限とrenameの情報を残す", () => {
@@ -151,22 +165,18 @@ test("本文変更なしの差分でも質問文に実行権限とrenameの情�
   assert.ok(!buildPrompt("旧入力", { file, side: "new", start: null, end: null }).includes("本文以外の差分:"));
 });
 
-test("解説と行からの質問に対象の図・説明・SVG全文を安全なフェンスで含める", () => {
+test("図付き解説の質問にはタイトルと説明だけを添え、SVG全文を含めない", () => {
   const diagram = { title: "入力から出力", description: "入力を検証して結果を渡す。", svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><text x="4" y="25">```</text></svg>' };
   const withDiagram = { ...comment, diagrams: [diagram] };
   const diagramFile = { ...file, comments: [withDiagram, { ...comment, id: "unrelated", start_line: 8, end_line: 9, diagrams: [{ ...diagram, title: "範囲外の図" }] }] };
-  for (const questionContext of [
-    { file: diagramFile, side: "old", start: 3, end: 3, comment: withDiagram },
-    { file: diagramFile, side: "old", start: 3, end: 3 },
-  ]) {
-    const prompt = buildPrompt("図の流れは？", questionContext);
-    assert.ok(prompt.includes("解説 c1 の図: 入力から出力"));
-    assert.ok(prompt.includes("説明: 入力を検証して結果を渡す。"));
-    assert.ok(prompt.includes("````svg\n" + diagram.svg + "\n````"));
-    assert.ok(!prompt.includes("範囲外の図"));
+  const prompt = buildPrompt("図の流れは？", { file: diagramFile, side: "old", start: 3, end: 3, comment: withDiagram });
+  assert.ok(prompt.includes("図: 入力から出力\n入力を検証して結果を渡す。"));
+  assert.ok(!prompt.includes("<svg"));
+  assert.ok(!prompt.includes("範囲外の図"));
+  for (const start of [3, null]) {
+    const codePrompt = buildPrompt("処理の流れは？", { file: diagramFile, side: "old", start, end: start });
+    assert.ok(!codePrompt.includes("図:"));
   }
-  const fullPrompt = buildPrompt("全体は？", { file: diagramFile, side: "old", start: null, end: null });
-  assert.ok(fullPrompt.includes("範囲外の図"));
 });
 
 function renderingHarness() {
@@ -460,7 +470,7 @@ test("新行のクリックは旧側カードを選択せず、旧行・新行�
   assert.ok(!harness.state.rowElements.get(2).classList.contains("active-range"));
 });
 
-test("削除ファイルの質問ボタンは旧版を指定し、質問文に両版Hashを含める", () => {
+test("削除ファイルの質問ボタンと質問文で旧版のファイル全体を指定する", () => {
   const harness = navigationHarness();
   let onClick, question;
   harness.elements["ask-file"] = { addEventListener: (_, callback) => { onClick = callback; } };
@@ -471,9 +481,9 @@ test("削除ファイルの質問ボタンは旧版を指定し、質問文に�
   assert.equal(question.side, "old");
   const deletedFile = { ...file, blocks: [file.blocks[0]], code_hashes: { new: "empty-hash", old: "deleted-code-hash" } };
   const prompt = buildPrompt("削除理由は？", { ...question, file: deletedFile });
-  assert.ok(prompt.includes("表示中の新版Hash: empty-hash"));
-  assert.ok(prompt.includes("表示中の旧版Hash: deleted-code-hash"));
-  assert.ok(prompt.includes("```old```"));
+  assert.ok(prompt.includes("対象: src/a%20 file.py（旧版・ファイル全体）"));
+  assert.ok(!prompt.includes("hash"));
+  assert.ok(!prompt.includes("```old```"));
 });
 
 test("スキップリンクで開いているファイルを維持したままメインへフォーカスする", () => {

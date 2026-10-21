@@ -1,27 +1,15 @@
 {
-  "verified_at": "2026-10-21T15:58:50.205250+00:00",
+  "verified_at": "2026-10-21T16:32:02.412112+00:00",
   "mode": "full",
-  "files": 63,
-  "comments": 192,
+  "files": 66,
+  "comments": 204,
   "diagrams": 1,
-  "inventory": 832,
-  "scope_categories": {
-    "git_metadata": 418,
-    "selected": 63,
-    "test_temporary": 51,
-    "python_cache": 23,
-    "distribution_output": 6,
-    "png_assets": 2,
-    "development_output": 239,
-    "previous_review": 24,
-    "third_party_assets": 6
-  },
+  "inventory": 960,
   "warnings": [],
   "checks": {
     "source_bytes_and_normalized_fulltext": true,
     "all_comments_verified_and_ranges_valid": true,
     "all_internal_links": true,
-    "all_diagrams_valid": true,
     "all_files_reviewed": true,
     "embedded_review_equals_json": true,
     "embedded_worker_matches_canonical": true,
@@ -29,54 +17,61 @@
     "assets_match_canonical": true,
     "asset_references_exist": true,
     "final_build_code_recheck": true,
-    "standalone_skill_packaging": true
+    "all_diagrams_valid": true,
+    "all_diagrams_rendered_and_visually_verified": true,
+    "standalone_skill_packaging": true,
+    "published_copy_verified": true
   },
   "reviewers": {
-    "integration": 39,
-    "ui": 7,
-    "tests": 13,
-    "python": 4
-  },
-  "browser": {
-    "transport": "loopback HTTP",
-    "checks": [
-      "overview",
-      "code and explanations",
-      "overview internal link to large expectations L259",
-      "SVG enlargement labels and arrows",
-      "diagram card and code synchronized scrolling",
-      "question prompt with source reference, commentary, SVG text"
-    ],
-    "screenshots": [
-      "screenshots/code.png",
-      "screenshots/diagram-card.png",
-      "screenshots/diagram-end.png",
-      "screenshots/diagram-middle.png",
-      "screenshots/diagram-scroll.png",
-      "screenshots/diagram.png",
-      "screenshots/overview.png",
-      "screenshots/question.png"
-    ],
-    "not_performed": [
-      "file scheme with network disconnected",
-      "mobile viewport",
-      "all browser acceptance fixture interactions"
-    ],
-    "connection_note": "Initial sandbox server was unreachable; scoped loopback server succeeded with approved execution permission."
+    "parent": 32,
+    "tooling": 16,
+    "ui": 11,
+    "core": 7
   },
   "prior_fix_validation": {
-    "python_total": 170,
-    "python_passed": 169,
+    "python_total": 176,
+    "python_passed": 175,
     "python_skipped": 1,
     "skip_reason": "Windows symlink creation permission unavailable",
-    "ui_passed": 38,
-    "note": "Completed earlier in the same session for the current source. Documentation-only generation does not rerun the full suite."
+    "ui_passed": 40,
+    "note": "Verified in the preceding question-prompt fix; full suite not rerun for this documentation generation."
   },
+  "notes": [
+    "Excluded content is documented in the overview; no source code was changed by this review generation.",
+    "Developer fixture wording and scaling-test comment discrepancies are documented in the relevant cards and overview."
+  ],
+  "prior_docs_backup": "C:\\Users\\gpsnm\\Desktop\\WalkthroughReviewTool\\dev\\output\\review-history\\docs-before-full-20261022-012724-ac1c39b9.zip",
+  "authoring_session": "C:\\Users\\gpsnm\\.codex\\visualizations\\2026\\10\\21\\01a15f3b-3191-70e1-b8f1-228e8f166ca2\\review-foecp3mt",
   "artifact_sha256": {
-    "index.html": "4501571b78537a2c1b80713b33e33d2d023a9d92b63f1b9229b79fb5dcb281d9",
-    "review.json": "2bac8a1786fa048b148c26b20721231967332f03ccb2d301b39dfff8e86c7720",
-    "self-review.md": "3641d8bedb73b797c14370e2c726255d3503fffd8b90f27da2f0821f97a36d5c"
+    "index.html": "12e021eb41826de91cdeea003db7589df24f666e79be5c8d46d9078eaed47dbc",
+    "review.json": "899bc393c6231f0c6760ced9b203936e488a78f3eb12ce2b5a70631d51ca9ec3",
+    "self-review.md": "22045d348df75533a70915b83ef5221c6a9486956f92780ff8a445ec041aee15"
   },
-  "prior_docs_backup": "C:/Users/gpsnm/Desktop/WalkthroughReviewTool/dev/output/review-history/docs-before-full-20261022-003945-988142e1.zip",
-  "authoring_session": "C:\\Users\\gpsnm\\.codex\\visualizations\\2026\\10\\21\\01a15f06-22b1-7833-86b9-3bec824c3c7e\\review-j9bcnx50"
+  "diagram_visual_verification": {
+    "diagram_count": 1,
+    "all_images_opened": true,
+    "diagrams": [
+      {
+        "card_id": "integration-skill-workflow",
+        "diagram_index": 1,
+        "svg_sha256": "1c45149260fc995dfc839c31a61ff01312a5ed1a8a20cd9276c1b7ec5bd4cd33",
+        "png": "diagrams/diagram-0001.png",
+        "status": "visually_verified",
+        "note": "拡大幅960pxとカード幅360pxのPNGを開き、日本語、文字切れ、重なり、矢印方向、カード幅の読みやすさを確認。全5段階とコード変更時の再確認が現行手順に対応し、修正不要。"
+      }
+    ]
+  },
+  "diagram_rendering": {
+    "browser": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "widths": [
+      960,
+      360
+    ],
+    "report": "diagrams/report.json",
+    "note": "Initial sandbox browser launch failed; scoped execution succeeded. All final PNGs were opened and inspected."
+  },
+  "git_diff_check": {
+    "generated_blank_code_lines_with_marker_space": 183,
+    "note": "Only canonical self-review source rows for empty lines are flagged; full output exactly matches the generator. Source snapshots were not altered to remove whitespace."
+  }
 }

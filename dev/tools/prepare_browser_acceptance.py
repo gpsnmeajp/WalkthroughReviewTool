@@ -170,7 +170,7 @@ def diagram_comments(review):
     }]
     return {
         "overview": "# SVG図付き解説\n\n[分岐](review:flow.py#L3)と[呼び出し](review:flow.py#L8)を図で確認します。"
-                    "図の拡大、同じIDを持つ別図の矢印、質問文に含まれるSVG、スクロール連動を確認してください。",
+                    "図の拡大、同じIDを持つ別図の矢印、質問文に含まれる図の説明、スクロール連動を確認してください。",
         "comments": [first, second],
     }
 

@@ -1,5 +1,5 @@
 {
-  "overview": "# WalkthroughReviewTool 全体ウォークスルーレビュー\n\n現在の作業コピーを全体モードで取り込んだ資料です。配布スキル、画面、開発用入口、テスト、fixture、要求・設計資料、SVG素材の63ファイルを説明します。コード本文はPythonが取得した固定スナップショットで、AIによる抜粋・転写ではありません。今回の資料更新では製品ソースを変更していません。\n\n## 入口から完成資料まで\n\n利用の入口は[スキル手順](review:skills/walkthrough-review/SKILL.md#L29)です。[準備処理](review:skills/walkthrough-review/scripts/prepare_review.py#L1)がプロジェクト外へ作業領域と全件一覧を作り、AIが本文対象を選びます。[生成本体](review:skills/walkthrough-review/scripts/walkthrough.py#L1)のbuildが全文・行番号・旧新Hashを固定します。差分指定時は[パーサー](review:skills/walkthrough-review/scripts/diff_parser.py#L556)がパッチと現在ファイルを照合し、削除本文や権限・名前変更等の付加情報も保持します。\n\nAIは[カード作成ツール](review:skills/walkthrough-review/scripts/comment_cards.py#L237)で固定版を読み、責務・保証・失敗時の挙動を1件ずつ説明します。担当別に全文と全カードを確認し、reviewedを記録してexport、mergeします。最後のbuildでソース変更を再検出し、[画面](review:skills/walkthrough-review/assets/ui/app.js#L1)が同じデータから概要・コード・解説・質問文を表示します。スキル手順の図はこの受け渡しを示します。\n\n実装と画面素材の正本はskills/walkthrough-review配下です。devのCLIはその正本を読み込む薄い入口です。[スキル単体配布](review:dev/tools/package_skill.py#L234)と[開発用ZIP](review:dev/tools/package_release.py#L216)は目的と収録範囲が異なります。要求の原本は[DRECTION.md](review:dev/docs/DRECTION.md#L7)、保存仕様は[data-format.md](review:dev/docs/data-format.md#L13)にあります。\n\n## 今回取り込んだ修正\n\n- カードID・担当名の大小文字だけが異なる保存先を拒否し、Windows上の上書きを防ぎます。作成時Hashが同じ値なら大文字表記も一致とし、元の表記を保持します。[実装](review:skills/walkthrough-review/scripts/comment_cards.py#L237)と[回帰確認](review:dev/tests/test_comment_cards.py#L1)を対応させました。\n- no-prefix形式のrename/copyで、実パス先頭のa/・b/を誤って取り除かないよう、[付加情報との照合](review:skills/walkthrough-review/scripts/diff_parser.py#L203)でパスを確定します。[テスト](review:dev/tests/test_diff_parser.py#L1)がプレフィックス条件を組み合わせて確認します。\n- largeケースの[期待値](review:dev/tools/prepare_browser_acceptance.py#L259)は50,000行・解説2件・verified 2件へ修正済みです。旧10,000行・解説1件という不一致の説明を更新しました。[専用テスト](review:dev/tests/test_browser_acceptance.py#L1)で全ケースの数値期待値と生成結果、Hashの3段階を照合します。\n\n## 対象と対象外\n\n全ファイルを走査したうえで、自作の意味のある実装・設定・テスト・資料を本文へ選びました。対象外は.gitの内部情報、既存docs、dev/output・dev/dist・テスト一時領域等の生成物、Pythonキャッシュ、同梱の第三者ライブラリ6ファイル、PNG素材2ファイルです。SVGの元素材は対象に含めています。対象外を確認済み・問題なしとは扱いません。走査の読取警告はありません。\n\n画面の対象外一覧はGit無視設定などで初期表示を絞るため、全件は「すべて」で確認できます。レビュー自身の生成物を再帰的に本文へ含めないため、旧docsは今回の対象外です。以前のdocsはdev/output/review-historyへZIPで退避しました。旧資料に存在した指摘1.mdは現在のプロジェクトにないため、その旧解説は今回の資料から外しました。\n\nfixture中のconfig.json・notes.txtを「対象外」とする説明は、サンプルのtargets.jsonを使う資料での位置付けです。現在のツール全体レビューではfixture自身も取り込んでいます。fixture内JSONの内部リンクはサンプルprojectをルートとする入力例です。\n\n## 確認の範囲と制約\n\n全63対象の固定全文・全カード・図を担当全体で自己確認し、行範囲・版・内部リンクとファイル間の接続を照合しました。Hash一致はコードと作成時記録の一致を示し、説明の意味や作成者の真正性の証明ではありません。未解説の行は機械的な被覆率であり、宣言や例を含む全行へ解説を付ける要件ではありません。\n\n直前の修正確認ではPython 170件中169件成功・1件スキップ、UIロジック38件成功、単独配布検証成功でした。スキップはWindowsでシンボリックリンク作成権限がない条件です。これらは実ブラウザーの見た目・操作や、AIの説明品質すべてを保証するものではありません。今回の成果物確認の詳細は同梱verification.jsonへ記録します。\n\nHTMLは静的で、元コードの自動監視やAIへの自動送信を行いません。更新検出にはbuildが必要です。差分の削除本文はパッチから復元し、旧実ファイルに照合した結果ではありません。画面は表示付近の行だけをDOMへ置くため、標準のページ内検索・選択には範囲の制約があります。全文はreview.json・self-review.mdにも残ります。Workerが使えない場合も本文を表示します。\n\nファイル保存や配布物の置換は個々のファイルごとに行い、複数ファイル全体を同時確定するトランザクションではありません。生成ツールの成功、Hashの一致、受入データの整合、画面の表示確認はそれぞれ異なる確認です。\n\n\n今回のブラウザー確認はループバックHTTPで、概要・コード・解説・内部リンク・図の拡大とスクロール連動・図付き質問文を確認しました。通信を切ってHTMLを直接開くfileスキームでの確認、モバイル表示、全受入ケースの実ブラウザー操作は今回実施していません。\n",
+  "overview": "# WalkthroughReviewTool 全体ウォークスルーレビュー\n\n現在の作業コピーを全体モードで取り込んだ資料です。配布スキル、Python実装、オフライン画面、開発用入口、テスト、fixture、要求・設計資料、SVG素材の66ファイルを説明します。コード全文はPythonが実ファイルから取得した固定スナップショットです。今回の資料更新では製品ソースを変更していません。\n\n## 入口とデータの流れ\n\n1. [スキル手順](review:skills/walkthrough-review/SKILL.md#L29)が対象・モード・完了条件を定め、[準備処理](review:skills/walkthrough-review/scripts/prepare_review.py#L1)がプロジェクト外に作業先と全件一覧を用意します。\n2. [生成本体](review:skills/walkthrough-review/scripts/walkthrough.py#L1)のbuildが選択したコード全文・行番号・旧新のHashを固定します。差分時は[パーサー](review:skills/walkthrough-review/scripts/diff_parser.py#L1)が変更後ファイルとパッチを照合し、削除本文を復元し、権限・名前変更等の付加情報を保持します。\n3. AIは[カード作成ツール](review:skills/walkthrough-review/scripts/comment_cards.py#L1)のreadで固定版を読み、責務・保証・境界条件・失敗時の動作を1件ずつ説明します。担当別に全文と全カードを確認してreviewedを記録し、親が概要とファイル間の接続を統合してexport、mergeします。\n4. 最終buildで解説作成後のソース変更を再確認します。図があれば[描画ツール](review:skills/walkthrough-review/scripts/render_svg.py#L1)で最終版の全図をPNG化し、AIが画像を開いて意味と見た目を確かめます。\n5. [画面](review:skills/walkthrough-review/assets/ui/app.js#L1)は埋込データから概要・全文・解説を表示します。生成後はネット接続や外部APIなしで閲覧できます。画面はソースを監視せず、AIへの自動送信も行いません。\n\n実装・画面素材の正本はskills/walkthrough-review配下です。devのCLIはその実体を呼び出す薄い入口で、実装を複製しません。[スキル単体配布](review:dev/tools/package_skill.py#L235)と開発用ZIPは収録範囲が異なります。要求の記録は[DRECTION.md](review:dev/docs/DRECTION.md#L7)、保存仕様は[data-format.md](review:dev/docs/data-format.md#L13)へ分かれています。\n\n## 今回の更新で確認する点\n\n- [質問文](review:skills/walkthrough-review/assets/ui/app.js#L766)はプロジェクト・パスと行範囲・質問が基本です。コード本文、Hash、生成日時、重複するレビュー参照、SVG全文を添付しません。解説カードから質問した場合だけ、その解説と図の文章を添えます。旧版の区別、本文以外の差分、確認が必要な警告は短く残します。\n- [SVGの手順](review:skills/walkthrough-review/references/svg-diagrams.md#L59)では、生成成功と画像を開いた確認を区別します。今回新たにrender_svg.py、対応する開発用入口、test_render_svg.pyも本文対象へ含めました。通常の資料作成では図のPNGだけを確認し、レビュー全体のブラウザー操作確認は行いません。\n- 保存形式v2は連続する本文をblocksへまとめます。[表示](review:skills/walkthrough-review/assets/ui/app.js#L1)は選択したファイルの行モデルを展開し、画面付近のDOMだけを保持します。構文強調のWorkerとキャッシュにより全文の保存と画面の描画負荷を分けています。\n- [カード保存](review:skills/walkthrough-review/scripts/comment_cards.py#L1)はIDの大小文字だけが違う衝突を拒否し、担当名の表記もそろえます。固定コードと現在のカード内容に確認記録を結び付け、内容を変えた後は再確認を要求します。\n\n## 対象と対象外\n\n全走査結果から、自作の実装・設定・テスト・資料66ファイルを本文対象に選びました。対象外はGit内部情報、既存docs、dev/output・dev/dist・テスト一時領域等の生成物、Pythonキャッシュ、同梱の第三者ライブラリとそのライセンス等6ファイル、PNG素材2ファイル、定型のMITライセンス本文です。SVGの元素材は対象です。走査の読取警告はありません。\n\n対象外は「確認済み」「問題なし」を意味しません。画面の対象外一覧はGit無視設定等で表示を絞りますが、全件一覧は「すべて」に残ります。docs自身は資料が自分を取り込む再帰を避けるため本文対象外です。更新前のdocsはdev/output/review-historyへZIPで退避しています。\n\nfixtureのconfig.json・notes.txtを「対象外」とするカードは、サンプルのtargets.jsonを使ったときの位置付けです。現在のツール全体レビューでは、これらfixture自身も説明対象です。fixture中のJSONに書かれたsrc/main.py等の参照は、サンプルprojectをルートとして使う入力例です。\n\n## 確認の範囲\n\n全対象の固定全文・全カードを担当全体で自己確認し、行範囲・版・内部リンクとファイル間の接続を照合しました。最終版の全コメントのHash一致と有効な行範囲、参照警告の解消、HTMLの埋込JSONと同梱素材、図のPNGを確認しました。確認結果と対象件数は同梱verification.jsonに記録します。\n\n直前の質問文修正時にPython176件中175件成功・1件スキップ、UIロジック40件成功を確認済みです。スキップはWindowsのシンボリックリンク作成権限によるものです。今回は資料更新のため全テストを再実行せず、成果物の整合検査と単独配布検証を行います。evals.jsonは行動評価のシナリオ集で、宣言された全ケースを今回実行したという意味ではありません。\n\n確認中、補助資料に次の表記差があり、該当カードに保証範囲を明記しました。元ソースは修正していません。\n\n- [受入fixtureの自由文](review:dev/tools/prepare_browser_acceptance.py#L265)には「質問文のSVGソース」という旧期待値が残ります。現行の質問文に含む図情報はタイトルと文章による説明です。数値期待値のテストはこの自由文を検査しません。\n- [スケール試験](review:dev/tests/test_scaling.py#L57)の「最後の対象外」というコメントに対し、replace(..., 1)は最初の一致箇所を変えます。対象外の不正を拒否する確認として読み、後半ファイルを壊した試験とは扱いません。\n\nHash一致はコードと作成時記録の対応を示し、解説の意味や不具合の不存在を証明しません。未解説範囲も機械的な被覆の指標で、宣言・例を含む全行へのカード付与を要求しません。差分の旧本文はパッチから復元し、旧実ファイルに照合した結果ではありません。仮想化された画面ではブラウザー標準の検索・選択がDOM上の範囲に制約されますが、全文はreview.jsonとself-review.mdにも保存します。\n",
   "comments": [
     {
       "id": "integration-line-endings",
@@ -37,18 +37,18 @@
       "start_line": 3,
       "end_line": 9,
       "title": "人間の精読を支援する役割とAI・Pythonの分担",
-      "body": "この製品の目的は、ソース全文と設計説明を並べ、人間が時間をかけて成果物を理解することです。AIは対象選定と意味の説明を担い、Pythonは実ファイルからの取り込みと行番号・Hashの作成を担います。\n\n質問ボタンは、該当箇所を含む質問文を組み立てる入口です。画面そのものがAIへ問い合わせて回答を取得する構成ではありません。\n",
-      "code_hash": "da32d49cb0955cceea21c203efc79c7a8ecc7af7a3df5eab7752011f1896f4f4",
+      "body": "この製品はソース全文と設計説明を並べ、人間が時間をかけて成果物を理解するためのスキルです。AIが対象選定と意味の説明を担い、Pythonが実ファイルからの取り込みと行番号・Hashを担います。\n\n質問ボタンはプロジェクト・パスと行番号・質問をまとめる入口です。解説カードからの質問には解説を添えますが、画面からAIへ送信したり回答を取得したりはしません。\n",
+      "code_hash": "2e077b4da31251ff11c7c7723973cb157728c68a58725dc568901e935b821ae0",
       "side": "new"
     },
     {
       "id": "integration-product-distribution",
       "file": "README.md",
       "start_line": 27,
-      "end_line": 48,
+      "end_line": 50,
       "title": "自己完結したフォルダを渡し、保存時点のコードを読む",
       "body": "省略時は全体レビューで、差分は明示したときに選びます。導入単位はSKILL.md単体ではなく、scripts・references・assetsを含むスキル一式です。完成レビューもHTMLだけを抜き出さず、assets等を含むフォルダごと保持します。\n\n資料は作成時点のスナップショットです。現在のファイルを監視せず、再buildによる取り込み直しで変更を検出します。Hash一致が証明するのはコードの同一性であり、説明内容の正しさではありません。\n",
-      "code_hash": "da32d49cb0955cceea21c203efc79c7a8ecc7af7a3df5eab7752011f1896f4f4",
+      "code_hash": "2e077b4da31251ff11c7c7723973cb157728c68a58725dc568901e935b821ae0",
       "side": "new"
     },
     {
@@ -58,37 +58,47 @@
       "end_line": 23,
       "title": "正本・補助入口・検証生成物の置き場所",
       "body": "配布するコードと画面素材はskills配下が正本で、devのCLIはその実装へ接続する薄い入口です。コードを二重保守せず、製品と開発環境で異なる動作を持ち込まない構成になっています。\n\nテスト・fixture・検証出力・梱包物はdev側に集めます。ここに掲載された相対コマンドはdevを作業ディレクトリにする前提なので、ルートからの呼び出しではパスを補います。\n",
-      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "code_hash": "4677dc5ebbf78d020bec1eeed0ef6e1a56c220318ca9c771948cc3fbcc6afa9d",
       "side": "new"
     },
     {
       "id": "integration-dev-verification",
       "file": "dev/README.md",
       "start_line": 25,
-      "end_line": 44,
+      "end_line": 46,
       "title": "自動検証とAIの行動評価の守備範囲",
       "body": "Pythonテストは入力検証、保存、ハッシュ、再生成、単独配布の動作を確認し、NodeのUIテストは画面ロジックを確認します。カード作成と大規模処理には専用の回帰テストがあります。\n\n実ブラウザーの見た目と操作、AIが説明を十分に作成したかは別の確認です。evals.jsonは実行結果ではなく、AIへ依頼して完了まで進めるかを見るシナリオ集です。\n\n受入データの数値メタデータは専用の[回帰テスト](review:dev/tests/test_browser_acceptance.py#L1)で生成結果へ照合します。ここを通っても、実画面の表示・操作確認は別途必要です。\n",
-      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "code_hash": "4677dc5ebbf78d020bec1eeed0ef6e1a56c220318ca9c771948cc3fbcc6afa9d",
+      "side": "new"
+    },
+    {
+      "id": "parent-dev-svg",
+      "file": "dev/README.md",
+      "start_line": 68,
+      "end_line": 78,
+      "title": "図のPNG生成と画像を開く確認を分ける",
+      "body": "SVGだけを描画するツールはレビューのフォルダ、JSON、単独SVGを受け取り、拡大幅960pxとカード幅360pxのPNG、元SVG、対応表を出力します。外部PythonパッケージやHTTPサーバーは使いません。\n\nPNGを生成しただけでは見た目の確認は終わりません。AIが開いて日本語、文字切れ、重なり、矢印、縮小時の可読性を確かめます。入力や図を修正した後は別の出力先へ描画し、古い画像と区別します。\n",
+      "code_hash": "4677dc5ebbf78d020bec1eeed0ef6e1a56c220318ca9c771948cc3fbcc6afa9d",
       "side": "new"
     },
     {
       "id": "integration-dev-browser",
       "file": "dev/README.md",
-      "start_line": 66,
-      "end_line": 110,
+      "start_line": 80,
+      "end_line": 126,
       "title": "fixtureの生成成功と画面の合格を区別する",
-      "body": "受入用ツールが全体・差分・図・警告等の画面を用意し、その後に人間またはブラウザー操作で表示と操作を検証します。生成コマンドだけで「画面のテストが通った」とは判断しません。\n\n直接HTMLを開けない操作環境ではループバック限定HTTPを利用できます。HTTPでの成功と、通信を切ってfile://から直接開く確認は別々に記録する方針です。\n",
-      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "body": "ここはUIを変更する開発者向けの表示・操作検証です。受入用ツールが全体・差分・図・警告等のHTMLを用意し、その後にブラウザーで表示と操作を確認します。fixtureの生成成功や数値テストだけで、画面も合格したとは扱いません。\n\n質問文はコード行からならパス・行番号・質問を基本とし、解説カードからなら解説と図の文章を添えます。コード本文・Hash・SVG全文を含めないことも確認項目です。\n\n直接HTMLを開けない操作環境ではループバック限定HTTPを利用できます。HTTPとオフラインの直接表示は別の確認です。通常のスキルによる資料作成ではレビュー全体のブラウザー操作確認は行わず、図だけPNGで確認します。\n",
+      "code_hash": "4677dc5ebbf78d020bec1eeed0ef6e1a56c220318ca9c771948cc3fbcc6afa9d",
       "side": "new"
     },
     {
       "id": "integration-dev-packaging",
       "file": "dev/README.md",
-      "start_line": 145,
-      "end_line": 175,
+      "start_line": 161,
+      "end_line": 181,
       "title": "利用者向け配布と開発用ソース配布を分ける",
-      "body": "通常の利用者へ渡すのは、同じバイト列の.skillまたはスキルZIPです。開発用ZIPにはテスト・資料・再梱包用ツールも入り、利用時には不要です。\n\n[梱包処理](review:dev/tools/package_skill.py#L234)は入力・アーカイブの整合を検査しますが、ユニットテストや実ブラウザー操作は実行しません。ライブラリの再取得も通常のレビュー生成では不要です。\n",
-      "code_hash": "b439f1391a14dc8b69a2727d5ee42fd9a05b74257d3af14bc6c69e0e4874152c",
+      "body": "利用者へ渡すのは同じバイト列の.skillまたはスキルZIPです。開発用ZIPにはテスト・資料・再梱包用ツールも入り、利用時には不要です。\n\n[梱包処理](review:dev/tools/package_skill.py#L235)は入力・アーカイブ・同梱Markdownのローカル参照を検査しますが、ユニットテストや実ブラウザー操作は実行しません。新しいソースや資料を配布対象にする場合は開発用ZIPの収録一覧も更新します。\n",
+      "code_hash": "4677dc5ebbf78d020bec1eeed0ef6e1a56c220318ca9c771948cc3fbcc6afa9d",
       "side": "new"
     },
     {
@@ -108,27 +118,37 @@
       "end_line": 29,
       "title": "資料作成を最後までAIが引き受けるという要求",
       "body": "ユーザーの通常操作を依頼と閲覧に絞り、対象の一覧化、実コードの取り込み、解説、自己確認、修正、提示までをAI側の仕事として定めています。Pythonの生成成功だけでは完了せず、説明と参照の対応まで確認する要求です。\n\n現在の実行手順は[SKILL.md](review:skills/walkthrough-review/SKILL.md#L29)、入力と照合は[解説形式](review:skills/walkthrough-review/references/input-format.md#L25)へ具体化されています。ここは原要求の記録として読みます。\n",
-      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
+      "code_hash": "0303c6bccb0036fa50f130af125557ec89b13bf4e399f3875e6b73347ba8b0ef",
       "side": "new"
     },
     {
       "id": "integration-requirements-diagrams",
       "file": "dev/docs/DRECTION.md",
       "start_line": 34,
-      "end_line": 46,
+      "end_line": 50,
       "title": "図と本文以外の差分も説明の根拠に残す",
-      "body": "図は装飾ではなく、分岐や呼び出し関係が理解しやすくなる箇所へ任意に添えるものです。タイトル・説明・SVGをコードの行とHashへ対応させ、再生成や質問でも保持することを求めています。\n\n権限変更・名前変更・コピーは、追加削除行がなくても意味のある変更です。本文のHashとは別の付加情報として扱い、説明・画面・質問へ残す要求になっています。\n",
-      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
+      "body": "図は分岐や呼び出し関係が理解しやすくなる箇所へ任意に添え、タイトル・説明・SVGをカードの行・版・Hashへ対応させます。自己確認資料と再生成にはSVG全文を保持し、質問文へ添えるのはタイトルと文章による説明だけです。\n\n最終版の全図をPNGへ描き、AIが画像を開いて文字切れ・重なり・矢印・カード幅での読みやすさを確認します。レビュー全体のブラウザー操作確認は通常のスキル実行に含めず、UI変更時の開発検証と区別します。\n\n権限変更・名前変更・コピーは追加削除行がなくても意味のある差分です。本文Hashと別の付加情報として画面・自己確認資料・質問へ残します。\n",
+      "code_hash": "0303c6bccb0036fa50f130af125557ec89b13bf4e399f3875e6b73347ba8b0ef",
+      "side": "new"
+    },
+    {
+      "id": "parent-requirements-question",
+      "file": "dev/docs/DRECTION.md",
+      "start_line": 81,
+      "end_line": 89,
+      "title": "質問に必要な参照と説明へ情報量を絞る",
+      "body": "貼り付け先がローカルコードを読めることを前提に、プロジェクト・パスと行番号・質問を中心にする要求です。解説そのものへの質問では解説本文と図の文章を添えますが、コードやSVG全文、Hash、日時、定型の回答指示は重複添付しません。\n\n質問文を短くしても、レビュー内部のHash照合や画面の警告は継続します。質問に不要な情報を減らすことと、資料の整合確認を省くことを分けています。\n",
+      "code_hash": "0303c6bccb0036fa50f130af125557ec89b13bf4e399f3875e6b73347ba8b0ef",
       "side": "new"
     },
     {
       "id": "integration-requirements-reading-ui",
       "file": "dev/docs/DRECTION.md",
-      "start_line": 77,
-      "end_line": 89,
+      "start_line": 91,
+      "end_line": 103,
       "title": "コードを読む面積と、読み進める操作を優先する",
       "body": "固定ヘッダや正常時の照合表示を減らし、概要本文・コード・解説を主役にするUI方針です。カード全体から行へ移動しつつ、質問、リンク、図拡大、文章選択は独立した操作として残します。\n\n対象外一覧の表示を絞っても全走査結果は保持します。「すべて」で追えることと、通常の読み進め方で管理用ファイルが邪魔にならないことを両立させる要求です。\n",
-      "code_hash": "b26ca33fc30b34bf5d09b211c5ecdebf93cc0797be7dd7edc919d4e11f50dbb3",
+      "code_hash": "0303c6bccb0036fa50f130af125557ec89b13bf4e399f3875e6b73347ba8b0ef",
       "side": "new"
     },
     {
@@ -138,7 +158,7 @@
       "end_line": 81,
       "title": "走査結果と取り込んだ本文を別々に保存する",
       "body": "inventoryは対象外を含む走査結果、filesは選択した本文と解説です。この分離により、本文を含めないファイルも対象外として把握できます。full/diffというモードはパッチ指定の有無で決まり、空パッチもdiffです。\n\n元bytesのsha256と、正規化した旧新コードのcode_hashesは用途が異なります。差分の権限・名前変更等も本文Hashとは別に保持し、Hash一致だけで変更全体の確認が完了したとは扱いません。\n",
-      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "code_hash": "3c3d5fc2d41cdf4e1782abc4321fdc2e24e5bd5f9142acbf3f1c1dc107d1ab3c",
       "side": "new"
     },
     {
@@ -148,7 +168,7 @@
       "end_line": 119,
       "title": "連続行は本文ブロックへまとめ、行番号を復元する",
       "body": "kindと旧新の開始番号、LFを含むtextで連続区間を表現します。全体レビューでは通常、一つの非空ファイルが一つのcontextブロックになり、行ごとの同じキーを保存しません。\n\n復元は各版に存在するブロックを順につなぎます。先頭BOMの移動で旧新の表示が異なる例外だけold_textを持ち、末尾LFの有無も保持します。保存データの冗長性を減らしながら、旧新本文のHashを再現する契約です。\n",
-      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "code_hash": "3c3d5fc2d41cdf4e1782abc4321fdc2e24e5bd5f9142acbf3f1c1dc107d1ab3c",
       "side": "new"
     },
     {
@@ -158,17 +178,17 @@
       "end_line": 133,
       "title": "全文を保存し、画面には必要な行だけを置く",
       "body": "選択ファイルの行モデルを展開し、DOMは画面付近と前後20行に限定します。画面外の行も行番号と行高で位置を求めるので、遠い行へのリンクや解説との連動を維持できます。\n\n構文強調は旧新全文をWorkerで解析し、結果を2ファイル・800万UTF-16コード単位まで再利用します。Workerを使えなくても本文は表示します。ブラウザー標準のページ内検索・選択はDOMにある範囲が対象で、全文は保存JSONや確認資料でも読めます。\n",
-      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "code_hash": "3c3d5fc2d41cdf4e1782abc4321fdc2e24e5bd5f9142acbf3f1c1dc107d1ab3c",
       "side": "new"
     },
     {
       "id": "integration-artifact-contract",
       "file": "dev/docs/data-format.md",
       "start_line": 163,
-      "end_line": 180,
+      "end_line": 193,
       "title": "同じデータからHTMLと自己確認資料を作る",
-      "body": "review.json、HTML内のJSON、自己確認Markdownを同じレビュー辞書から生成します。埋込みJSONは字下げを省略し、scriptの終端になり得る文字をエスケープします。テンプレートのマーカーと同じ文字列がコードにあっても、本文は置換しません。\n\n未解説範囲は版別の区間を統合してから行と照合し、説明の関連付けの有無を示します。全行へ機械的に説明を付ける指示ではなく、説明の意味が正しいことを証明するものでもありません。\n",
-      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "body": "review.json、HTML内のJSON、自己確認Markdownを同じレビュー辞書から作ります。埋込みJSONは字下げを省略し、scriptの終端になり得る文字をエスケープします。コードにテンプレートのマーカーと同じ文字列があっても、本文は置換しません。\n\n未解説範囲は版別区間を統合して行と照合し、説明が関連付いている範囲を示します。全行へ説明を付ける指示や意味の正しさの証明ではありません。\n\n図は検証したSVGを画像として表示し、質問文には説明だけを添えます。質問の基本情報はプロジェクト・パスと行範囲・質問で、コード本文・Hash・SVG全文は添付しません。準備時のsession.jsonは後続処理の保存予定先を示すもので、準備時点で完成物が存在する意味ではありません。\n",
+      "code_hash": "3c3d5fc2d41cdf4e1782abc4321fdc2e24e5bd5f9142acbf3f1c1dc107d1ab3c",
       "side": "new"
     },
     {
@@ -178,7 +198,7 @@
       "end_line": 222,
       "title": "反復APIは最後まで消費して初めて検査が完了する",
       "body": "iter_patchはファイル単位、iter_build_rowsは行単位で結果を返します。対象外の本文やhunkを全件分保持せず、各ファイルの検証後に解放する構成です。リストで扱いたい呼び出し元にはparse_patch/build_rowsもあります。\n\n途中で反復を止めると、後半の不正はまだ見つかっていない可能性があります。生成側は対象外も含めて最後まで消費します。削除行はパッチから復元するため、変更前の実ファイルと照合した結果ではないという限界も明記されています。\n",
-      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "code_hash": "3c3d5fc2d41cdf4e1782abc4321fdc2e24e5bd5f9142acbf3f1c1dc107d1ab3c",
       "side": "new"
     },
     {
@@ -188,7 +208,7 @@
       "end_line": 255,
       "title": "カードの確認記録を固定コードと現在内容へ結び付ける",
       "body": "固定スナップショット、担当別カード、概要、確認記録を分けて保存します。固定IDにはコード・対象順・差分条件を含め、概要の編集や同一コードの再buildではストアを無効にしません。\n\nカード変更後は確認記録を古いものとし、全対象の現行記録とカード検証がそろってからexportします。元プロジェクトの監視ではないため最終buildは別途必要です。OSロックと固有一時ファイルで並行保存を保護しますが、意味の正しさはAIの自己確認に依存します。\n\nカードIDは大小文字だけの違いも重複として拒否し、担当名も既存の表記を厳密に合わせます。同じHashの大文字表記は照合でき、内容が変わらない更新では元の作成時表記を保持します。\n",
-      "code_hash": "fd3ccb788d7791d641250ae88b53d731f22acf35a841bf92d7a4c1b6a88dbd37",
+      "code_hash": "3c3d5fc2d41cdf4e1782abc4321fdc2e24e5bd5f9142acbf3f1c1dc107d1ab3c",
       "side": "new"
     },
     {
@@ -229,27 +249,27 @@
       "end_line": 45,
       "title": "呼び出し方から完成資料までを評価するシナリオ",
       "body": "これはunittestの実行コードではなく、AIがスキルを実行した結果を評価するプロンプトと判定項目です。ケース1は引数なしの全体レビュー、ケース2は[固定パッチ](review:dev/tests/fixtures/diff.patch#L1)からの削除復元、ケース3はGitからの差分取得を扱います。\n\n追加のJSONやCLIを人間へ要求しないこと、全一覧・対象外・旧新のHashを残すこと、元コードやGit indexを変更しないことが評価対象です。宣言されたassertions自体が自動実行される保証は、このファイルだけからは得られません。\n",
-      "code_hash": "0fdb2f06273249311698c33af57b321894dcd912687b57187e3763f26e98686f"
+      "code_hash": "443527176673738fe8fc0cd81c7ae34346816f2367faff43aa3f0cce974b5cee"
     },
     {
       "id": "tests-evals-diagram-metadata",
       "file": "dev/tests/evals.json",
       "side": "new",
       "start_line": 46,
-      "end_line": 76,
+      "end_line": 77,
       "title": "図と本文以外の変更を人間が確認する",
-      "body": "ケース4はcheckoutから合計計算へ渡る流れに図が役立つかをAIに判断させます。SVGの有無だけでなく、ノードと矢印の実装対応、説明・Hash・質問文への保持、表示確認できる場合の文字切れとスクロールも評価します。\n\nケース5は権限・名前変更・コピーを本文と別の情報として説明する要求です。本文Hashが同じでも変更があり得るため、コード本文だけを読んで「変更なし」と結論付けないことを確かめます。[SVGの自動検証](review:dev/tests/test_diagrams.py#L117)に加え、人間向けの内容確認を求めるシナリオです。\n",
-      "code_hash": "0fdb2f06273249311698c33af57b321894dcd912687b57187e3763f26e98686f"
+      "body": "ケース4はcheckoutから合計計算へ渡る流れに図が役立つかをAIに判断させます。ノード・矢印と実装の対応、自己確認資料のSVG全文・行・版・Hash、再buildによる保持を評価します。最終版の全図をPNG化して開き、修正後は再描画する行動を求め、レビュー全体のブラウザー確認やスクロール連動の検証は行わないと明記されています。\n\n質問文に添える図の情報は現行の[質問手順](review:skills/walkthrough-review/SKILL.md#L88)に従い、タイトルと文章の説明です。ケース5は本文Hashが同じでも権限・名前変更・コピーに変更があり得ることを説明し、差分付加情報を残す要求です。これは評価シナリオの宣言であり、その実行済み結果ではありません。\n",
+      "code_hash": "443527176673738fe8fc0cd81c7ae34346816f2367faff43aa3f0cce974b5cee"
     },
     {
       "id": "tests-evals-card-workflow",
       "file": "dev/tests/evals.json",
       "side": "new",
-      "start_line": 77,
-      "end_line": 93,
+      "start_line": 79,
+      "end_line": 94,
       "title": "分担と単独作業に共通の完成条件",
       "body": "ケース6はカードを1件ずつ保存し、readのnextを最後まで追い、担当別の確認記録を親が統合する作業を評価します。サブエージェントが使えない環境でも、単独で同じ確認範囲を終えることが期待値です。\n\n[カード保存の自動テスト](review:dev/tests/test_comment_cards.py#L67)はツールの保持・拒否動作を確かめますが、ここではAIが全文と解説を実際に読み、最後の再buildで変化を見直す行動まで求めます。確認記録を付けることと解説内容が正しいことは別に評価します。\n",
-      "code_hash": "0fdb2f06273249311698c33af57b321894dcd912687b57187e3763f26e98686f"
+      "code_hash": "443527176673738fe8fc0cd81c7ae34346816f2367faff43aa3f0cce974b5cee"
     },
     {
       "id": "tests-fixture-diff-comments",
@@ -468,7 +488,7 @@
       "start_line": 168,
       "end_line": 194,
       "title": "長大行と削除旧版を最後まで読み出す",
-      "body": "日本語の長大な1行、空行、垂直タブ、末尾改行なしを組み合わせ、nextのstart/offsetを追って返った断片を再結合します。毎ページの本文文字数が上限内で、再結合が原文と完全一致することを確認し、不正offsetは拒否させます。\n\n別ケースは削除パッチからold本文を読み、存在しないnew側は空行配列になることと、old側カードのHash照合を確認します。ページを返すAPIの欠落防止を検証するテストで、利用するAIが最後まで読んだかは[評価シナリオ](review:dev/tests/evals.json#L77)の責務です。\n",
+      "body": "日本語の長大な1行、空行、垂直タブ、末尾改行なしを組み合わせ、nextのstart/offsetを追って返った断片を再結合します。毎ページの本文文字数が上限内で、再結合が原文と完全一致することを確認し、不正offsetは拒否させます。\n\n別ケースは削除パッチからold本文を読み、存在しないnew側は空行配列になることと、old側カードのHash照合を確認します。ページを返すAPIの欠落防止を検証するテストで、利用するAIが最後まで読んだかは[評価シナリオ](review:dev/tests/evals.json#L89)の責務です。\n",
       "code_hash": "05dccb992e09a6e961a40a8307157f53c937eaf9a108a1a2ca0dbb568f85faaf"
     },
     {
@@ -738,8 +758,8 @@
       "start_line": 21,
       "end_line": 111,
       "title": "単独スキル配布の内容・再現性・旧出力保持を確かめる",
-      "body": "テストごとに正規のskillフォルダを日本語・空白付きの一時領域へ複製します。evals・キャッシュ・余分なprivate.txtを混ぜても収録せず、skillとzipの全bytesが同じで、各checksumが対応することを確認します。\n\n同一入力の再出荷、無関係なリポジトリZIPの保持、候補検証失敗時の旧4成果物保持、一時領域の掃除を試します。入力skill内への出力や必須素材の欠落は出力前に拒否します。収録期待値の一部は製品のcollect_payloadを使うため、未知の必須ファイルをすべて独立に列挙するテストではありません。\n",
-      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+      "body": "テストごとに正本のスキルを日本語・空白付きの一時領域へ複製します。evals・キャッシュ・余分なprivate.txtを混ぜても収録せず、`.skill` と `.zip` の全bytesと外部checksumが一致することを確認します。同じ入力の再出荷でも同じ四成果物となり、無関係なリポジトリZIPは保持します。\n\n候補検証失敗時の旧四成果物保持、一時領域の掃除、checksum名がフォルダの場合の事前拒否も検証します。入力スキル内への出力や必須素材の欠落では出力を開始しません。収録期待値の一部は製品のcollect_payloadを使うため、必要ファイルを全て独立に列挙する試験ではありません。\n",
+      "code_hash": "e775cbe465ba5d961fb627fccb4c45efeec2e6c916358a9d6c9e310062c2fdfe"
     },
     {
       "id": "tests-skill-package-contract",
@@ -748,8 +768,8 @@
       "start_line": 113,
       "end_line": 189,
       "title": "配布説明の形式と同梱リンクを出荷前に確認する",
-      "body": "frontmatterは名前・説明など対応する項目、重複、型、限られたYAML表記を検証します。Markdownのローカルリンクは実際の収録payload内へ閉じる必要があり、ディスクにあるだけで未収録のevalsへ参照しても拒否します。コードフェンス内の例や外部リンクは受理するケースです。\n\n素材の親がリンク相当なら出力前に止め、ZIPの余計なメンバーや改変bytesも拒否します。汎用YAMLパーサーやMarkdown全文法の対応を保証するテストではなく、配布に採用した形式とリンク検査の境界を固定します。\n",
-      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+      "body": "frontmatterの必須項目、別名、重複、対応外YAML、空文字や型に見える値を個別に拒否させます。Markdown参照は実際の収録payload内に閉じる必要があり、ディスクに存在しても未収録のevalsへ参照すれば梱包を止めます。コードフェンスの例・外部参照・収録内の相対リンクは正常ケースとして扱います。\n\n素材の親経路の検査を失敗させて出力前停止を確認し、有効なZIP形式でも本文改変・余分なメンバーをverifierが拒否することを確かめます。任意のYAMLやMarkdown全文法への対応を保証するものではなく、この配布形式の検証境界を固定するテストです。\n",
+      "code_hash": "e775cbe465ba5d961fb627fccb4c45efeec2e6c916358a9d6c9e310062c2fdfe"
     },
     {
       "id": "tests-skill-package-card-flow",
@@ -758,18 +778,18 @@
       "start_line": 191,
       "end_line": 241,
       "title": "配布物だけでカード作成から最終再buildまで通す",
-      "body": "生成skillを展開し元スキルをリネームしてから、展開先CLIをPYTHONPATH空で別プロセス起動します。prepareのcards_cliが展開先を指すことを確認し、変更後1行と削除旧1行をread、担当別add、SVG添付、reviewed、概要、export、merge、再buildまで進めます。\n\n2カードのverified、警告なし、self-reviewのSVG全文、2ファイルの確認記録、作成手順と分担資料の同梱を確認します。CLIの単独実行経路の検証で、AIによる解説の意味の自己確認や実ブラウザー表示は含みません。\n",
-      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+      "body": "生成したスキルを展開し元スキルをリネームしてから、展開先CLIを `PYTHONPATH` 空で別プロセス起動します。prepareのcards_cliが展開先を指すことを確認し、変更後一行と削除旧一行のread、担当別add、SVG添付、reviewed、概要、export、merge、最終再buildまで通します。\n\n二カードのverified、警告なし、self-reviewのSVG全文、二ファイルの確認記録、作成手順・分担資料の同梱を検証します。元リポジトリのimportに依存しないカード作成経路の試験です。AIが解説の意味を確認したことや、実ブラウザー上の図の描画品質は検証していません。\n",
+      "code_hash": "e775cbe465ba5d961fb627fccb4c45efeec2e6c916358a9d6c9e310062c2fdfe"
     },
     {
       "id": "tests-skill-package-full-diff",
       "file": "dev/tests/test_package_skill.py",
       "side": "new",
       "start_line": 243,
-      "end_line": 332,
+      "end_line": 339,
       "title": "単独展開先で削除・権限差分・図の保持を確認する",
-      "body": "展開前にZIPパスが専用領域内へ収まることを確認し、元スキルを使えなくしてからprepareと全体・差分build/mergeを行います。main.pyの図付きカード、削除old.py、本文の変わらないrun.shの権限差分を組み合わせます。\n\n最終再build後もHashがverifiedで図と説明が残り、差分では削除blocks、old/new mode、context本文、差分要約が保持されることを確認します。OS上の実行権限を変更するテストではなく、渡されたパッチの付加情報を資料に保つ検証です。\n",
-      "code_hash": "4bb12d23048d0b70b151a7c32bf8bd5f211ea891d14ae90bb07a6bc84f0136d4"
+      "body": "展開前に全ZIPパスが専用領域内へ収まることを確認し、元スキルを使えなくして展開先だけでprepareと全体・差分build/mergeを行います。main.pyの図付きカード、削除old.py、本文の変わらないrun.shの権限差分を組み合わせ、最終再build後もHash・図・説明・差分付加情報が保たれることを確認します。\n\n同梱render_svg.pyのhelpと図ゼロ入力も展開先から実行し、追加された描画ツールの起動や依存欠品を検出します。このケースではブラウザーを起動する実PNG描画は行いません。[描画ツールのテスト](review:dev/tests/test_render_svg.py#L1)と実PNGの画像確認が別に必要です。権限差分もパッチ記録の保持を検証するもので、OSの実行権限を変更していません。\n",
+      "code_hash": "e775cbe465ba5d961fb627fccb4c45efeec2e6c916358a9d6c9e310062c2fdfe"
     },
     {
       "id": "tests-prepare-session-inventory",
@@ -802,6 +822,36 @@
       "code_hash": "a34a4165fb30a149df922d038cc388df5d2748070968e98b15ab174d67ff0666"
     },
     {
+      "id": "ui-svg-test-mapping",
+      "file": "dev/tests/test_render_svg.py",
+      "side": "new",
+      "start_line": 20,
+      "end_line": 61,
+      "title": "複数図と旧版カードの対応を出力バイトまで確認する",
+      "body": "標準ライブラリで既知寸法の白いPNGを組み立て、render_pngの戻り値を模擬します。レビュー本体のカード1枚と未所属の旧版カード2図を同時に入力し、全3図が順番・図番号・行範囲を保って出力されることを確かめます。\n\n元入力全体のHash、SVGの正確な内容とHash、PNGのバイト列、保存されたreport.jsonの内容まで比較します。図を取り出して保存する経路の保証であり、ブラウザーを起動して日本語や矢印を描画するテストではありません。\n",
+      "code_hash": "99395329ecfcd3e90d11a57dd56d18d1627e793fee8d8d3f0d709e402a463afc"
+    },
+    {
+      "id": "ui-svg-test-protection",
+      "file": "dev/tests/test_render_svg.py",
+      "side": "new",
+      "start_line": 63,
+      "end_line": 91,
+      "title": "空入力と既存出力の保護、失敗時の完了扱いを確認する",
+      "body": "図が0件ならブラウザー探索を行わず対応表だけを作ること、同じ出力先の再使用を拒否し以前の対応表を変えないことを確認します。scriptや外部画像を含むSVGでは、ブラウザーの探索や出力フォルダ作成より前に入力検証が拒否します。\n\n指定したエンジンが存在しない場合は出力先を作らず、描画処理が失敗した場合もreport.jsonを残しません。描画成功と全図の完了を混同しないための境界のテストです。エンジンの実起動や画像の見た目は模擬の外にあります。\n",
+      "code_hash": "99395329ecfcd3e90d11a57dd56d18d1627e793fee8d8d3f0d709e402a463afc"
+    },
+    {
+      "id": "ui-svg-test-result",
+      "file": "dev/tests/test_render_svg.py",
+      "side": "new",
+      "start_line": 93,
+      "end_line": 117,
+      "title": "ブラウザーの完了形式とPNG寸法の境界を検証する",
+      "body": "subprocess.runの戻り値を模擬し、専用ローカルHTMLをシェルを使わない引数配列でブラウザーへ渡すこと、DOMの完了JSONから画像バイト・幅・高さを復元することを検証します。不正なbase64や報告値と異なるPNG寸法を受け入れないことも確かめます。\n\nブラウザーの異常終了、完了要素のないDOM、描画側のerrorをそれぞれ失敗にします。これは結果を受け取るプロトコルの確認であり、ヘッドレスエンジンが実際に起動するか、SVGが読みやすく描かれるかは最終PNGの画像確認で補います。\n",
+      "code_hash": "99395329ecfcd3e90d11a57dd56d18d1627e793fee8d8d3f0d709e402a463afc"
+    },
+    {
       "id": "tests-scaling-lazy-errors",
       "file": "dev/tests/test_scaling.py",
       "side": "new",
@@ -818,7 +868,7 @@
       "start_line": 30,
       "end_line": 59,
       "title": "対象外の大きな差分をファイル数分保持しない",
-      "body": "4000行のファイル6個とパッチを測定前に用意し、対象0件で1個分と6個分をcreate_reviewします。Git注記をmockし、GC後のtracemalloc peakを比較して追加確保がファイル数に比例して増えないことを閾値で確認します。全6件のinventoryは残します。\n\n対象外でも本文不一致は拒否することを最後に確認します。入力自体のメモリ、OS全体の使用量、実行時間、任意規模の絶対上限を測るベンチマークではありません。\n",
+      "body": "4000行のファイル6個とパッチを測定前に用意し、対象0件で1個分と6個分をcreate_reviewします。Git注記をmockし、GC後のtracemalloc peakを比較して追加確保がファイル数に比例して増えないことを閾値で確認します。全6件のinventoryは残します。\n\n対象外でも本文不一致を拒否することも確認します。ただしソース内のコメントは「最後の対象外ファイル」と記す一方、実際は `replace(..., 1)` で入力中最初の該当箇所を変更しています。このケースが直接確かめるのは対象0件でも本文を照合することです。反復の後続まで検査する契約は[前段の遅延エラーテスト](review:dev/tests/test_scaling.py#L15)で別に扱います。\n\n入力自体のメモリ、OS全体の使用量、実行時間、任意規模の絶対上限を測るベンチマークではありません。\n",
       "code_hash": "a9525b20c279a8ce916d77f72da9e1ee5089fa9ceeb68520a4403af948e007da"
     },
     {
@@ -919,7 +969,7 @@
       "end_line": 36,
       "title": "ブラウザーなしで本体の関数を検証する入口",
       "body": "app.js全体をvm.Scriptで構文検査した上で、関数の開始・終了文字列を見つけて必要部分をVMへ取り込みます。実装をテスト用に複製せず、実際の関数をassertで確認する構成です。抽出位置が見つからなければテストは失敗します。実行はリポジトリルートからnode dev/tests/ui_logic.test.cjsです。\n\nDOMやスクロール値は後半の独自スタブで与えます。したがって関数の計算・分岐・受渡しを保証するテストであり、ブラウザー全体での初期起動、実際のCSSレイアウト、MarkedのDOM処理、クリップボード権限、支援技術の動作までを証明するものではありません。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "ui-test-scroll",
@@ -929,67 +979,67 @@
       "end_line": 96,
       "title": "対象外判定と連動位置の境界条件を固定する",
       "body": "対象外の簡略一覧でGit除外・ドットフォルダを隠しつつ、通常のドットファイルを残す判定を検証します。続いて[連動位置の計算](review:skills/walkthrough-review/assets/ui/app.js#L564)について、到達不能アンカー、同一行の複数カード、末尾への丸め、スクロール不能ペイン、アンカーなしを確認します。\n\n代表的な対応表では入力位置を1pxずつ進め、結果が単調かつ範囲内に収まることも調べます。これは補間関数に対する保証です。実ブラウザーでのホイール・タッチ・スクロールイベントの連続発火や見た目の滑らかさは別の確認範囲です。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "ui-test-prompts",
       "file": "dev/tests/ui_logic.test.cjs",
       "side": "new",
       "start_line": 98,
-      "end_line": 170,
-      "title": "旧新・Hash・図を質問文へ落とさないための検証",
-      "body": "パスに空白とパーセントを含む旧行の質問を使い、参照のURLエンコード、作成時と表示中のHash、末尾改行なし、バッククォートを含むコードのフェンスを確認します。消失範囲には無関係なコードが入らず、old_textがあれば旧側へ使われることも検証します。\n\n本文変更がない権限・名前変更の差分も質問へ残し、解説指定・行指定・ファイル全体で含める図の範囲を確認します。図の説明とSVG全文にも安全な長さのフェンスを使うことを確かめます。生成済み文字列の保証であり、コピー操作や外部エージェントの回答品質は対象外です。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "end_line": 180,
+      "title": "質問文の簡潔さと必要な文脈の保持を検証する",
+      "body": "コードからの質問がプロジェクト・パスと行範囲・質問だけになることを文字列全体で確かめます。パスに空白とパーセントを含むケース、旧行、解説の不一致・未照合・消失範囲・リンク警告を分け、コード本文・ハッシュ・生成日時・重複参照などが混ざらないことも確認します。\n\nファイル全体への質問でblocksを読み出すと例外にすることで、コードを展開しない契約を確かめます。解説カードからはその本文と図のタイトル・文章による説明だけを添え、SVG全文や他カードの図は添えません。権限変更・名前変更の差分は残します。生成文字列の検証であり、コピー権限や外部エージェントの回答品質は対象外です。\n",
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "ui-test-render",
       "file": "dev/tests/ui_logic.test.cjs",
       "side": "new",
-      "start_line": 172,
-      "end_line": 303,
+      "start_line": 182,
+      "end_line": 313,
       "title": "一覧と図を独自DOMスタブで確認する",
       "body": "renderingHarnessは要素生成・属性・イベントを模した最小DOMを用意し、対象外/対象/すべてフィルタと検索結果を照合します。対象外一覧が空でも全レビュー済みと表示しないこと、本文以外の差分を文字列で描き次のファイルで消すことを確認します。\n\n図はinline SVGを挿入せず説明付きimgのdata URLへ渡すこと、読込み後にアンカーを再計算すること、拡大後に再拡大ボタンを出さないことを調べます。欠損・errorでも説明を残します。画像のload/errorは手動で発火するため、実際のSVG描画・文字切れ・画像隔離のブラウザー挙動はこのテストだけでは確認できません。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "ui-test-cards",
       "file": "dev/tests/ui_logic.test.cjs",
       "side": "new",
-      "start_line": 305,
-      "end_line": 377,
+      "start_line": 315,
+      "end_line": 387,
       "title": "カード移動が質問・リンク・文章選択を妨げないことを確認する",
       "body": "カードの本文・見出し・余白から旧行とカードIDへ移動できる一方で、子ボタン・リンク・図拡大・選択中の文章・既に処理済みのイベントではカード全体の移動を起こさないことを確認します。行番号ボタンはキーボード操作の入口として残します。\n\n範囲を失ったカードではクリック移動と行番号ボタンを止め、Hash警告・範囲警告・質問を残すことも検証します。[実装](review:skills/walkthrough-review/assets/ui/app.js#L489)の分岐をスタブで呼び分けており、実際のイベント伝播・選択ドラッグ・キーボードのフォーカス順はブラウザーでの確認が必要です。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "ui-test-navigation",
       "file": "dev/tests/ui_logic.test.cjs",
       "side": "new",
-      "start_line": 379,
-      "end_line": 555,
+      "start_line": 389,
+      "end_line": 565,
       "title": "参照移動の版とカードIDを保ち、仮想行にも届かせる",
       "body": "ナビゲーション用スタブで、同じ行の2枚目や重複範囲のカードを選んでも別カードへ戻らないことを検証します。旧新の強調を分け、明示的な行移動では横スクロールを行頭へ戻します。削除ファイルの質問は旧版、スキップリンクは現在のファイル維持を確認します。\n\nResizeObserverの通知、テンプレートIDの欠落・重複、空行・末尾改行・BOM例外を持つブロックの非破壊展開、描画中は最後の移動だけ保留することも対象です。画面外行のDOMがなくても、固定行高から5万行目のアンカーを作れることを確かめます。位置は仮定した矩形であり、実測レイアウトとの一致は別確認です。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "ui-test-worker",
       "file": "dev/tests/ui_logic.test.cjs",
       "side": "new",
-      "start_line": 557,
-      "end_line": 619,
+      "start_line": 567,
+      "end_line": 629,
       "title": "実Prismと偽Workerを使い、解析と非同期制御を分けて検証する",
       "body": "Worker本体は同梱PrismをVMへ読み、旧新の独立解析、複数行文字列、特殊文字のエスケープ、行ごとのspanの釣合い、未知言語のnullを確認します。Prism既定のWorkerハンドラーを無効にしていることも確かめます。\n\n呼出し側はFakeWorkerで、送る旧新本文、取消時のterminate・タイマー解除・Blob URL解放、古い結果の無視、再訪キャッシュ、error時の後始末を検証します。実ブラウザーのBlob Worker起動や15秒経過の実時間試験ではなく、制御経路のテストです。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "ui-test-virtual",
       "file": "dev/tests/ui_logic.test.cjs",
       "side": "new",
-      "start_line": 621,
-      "end_line": 751,
+      "start_line": 631,
+      "end_line": 761,
       "title": "5万行の表示窓・再利用・切替・印刷を検証する",
       "body": "独自DOMとタイマースタブで5万行を展開し、500pxの表示高・25px行高ではDOMを61行以下に抑えながら、中間・末尾・範囲強調・共通DOMの再利用を確認します。行ごとのクリックハンドラーを持たず、親の一つのハンドラーで行移動と質問を扱うことも確かめます。\n\n色付けキャッシュの2件/800万文字上限、古い非同期描画の破棄、印刷時の全行展開と復帰、行高変更時の位置換算を検証します。61行はこのテスト条件の値で、どの画面でも同じ上限という意味ではありません。実際の速度・メモリー使用量・印刷ページ割り・ブラウザーの巨大スクロール上限は測っていません。非同期検証の失敗は終了コードへ反映します。\n",
-      "code_hash": "7371d8a0919e089440a0da8507dc46e5dbadd5da9ffdc1e2717ce23d507d8623"
+      "code_hash": "9b25d0f8277c76c2a6707fd321a1417e29116a46ad65f205e5ceace9781cc307"
     },
     {
       "id": "integration-benchmark-coverage",
@@ -1008,6 +1058,16 @@
       "end_line": 56,
       "title": "入力を先に作り、生成処理の追加確保メモリを測る",
       "body": "同じ大きさのファイルとパッチを用意し、対象0件で1ファイルと6ファイルを処理します。入力作成後にtracemallocを開始するため、比較する値はパッチ文字列自体を除いたPythonの追加確保ピークです。\n\n対象外を検証後に解放できていれば、ファイル数に比例して全文が積み上がらないことを確認できます。OSプロセス全体のメモリ量や、異なる文字構成・最大単一ファイルの負荷を網羅する測定ではありません。\n",
+      "code_hash": "aae31419b33d734958e5ec8eb4b019a8bf9806b6942f3ef6bd31481304bc5eb3",
+      "side": "new"
+    },
+    {
+      "id": "core-benchmark-report",
+      "file": "dev/tools/benchmark_scaling.py",
+      "start_line": 57,
+      "end_line": 73,
+      "title": "意味の同一性を確認して計測結果を保存する",
+      "body": "範囲判定の計測は1万行・500カードと4万行・2000カードの合成入力で行います。新しい区間統合方式と[比較用の単純な方式](review:dev/tools/benchmark_scaling.py#L21)が同じ未解説範囲を返すことをassertしたうえで、両者の時間と自己確認Markdownの生成時間を記録します。速度だけを測り、被覆の意味が変わった改善を受け入れない構成です。\n\n計測には実行したPythonの版、対象外差分の追加確保ピークと所要時間、行数・カード数ごとの測定値を含め、`dev/output/scaling/benchmark.json` へ保存します。このスクリプトは合成プロジェクトと開発用出力を作りますが、製品コードやレビュー対象の実プロジェクトは書き換えません。\n\nこれは任意に実行するベンチマークであり、時間の合否閾値を持つ自動テストではありません。実行環境による変動を含む値なので、特定の過去の測定結果を現行版の保証としては扱いません。\n",
       "code_hash": "aae31419b33d734958e5ec8eb4b019a8bf9806b6942f3ef6bd31481304bc5eb3",
       "side": "new"
     },
@@ -1045,80 +1105,80 @@
       "id": "integration-release-manifest",
       "file": "dev/tools/package_release.py",
       "start_line": 27,
-      "end_line": 99,
+      "end_line": 102,
       "title": "開発用ZIPは明示した出荷一覧から作る",
-      "body": "SHIP_FILESを出荷範囲の根拠にし、skillsの実体だけでなく、開発用入口・テスト・fixture・再梱包ツールも含めます。リポジトリ全体を再帰コピーしないため、Git履歴や実行結果、個人設定が入り込みにくい構成です。\n\n新しい保守対象を追加した場合はこの一覧も更新する必要があります。通常利用向けの[スキル単体梱包](review:dev/tools/package_skill.py#L28)とは配布目的が異なります。\n\n受入データの期待値を検証するtest_browser_acceptance.pyも出荷一覧へ含め、展開後に同じ回帰確認を実行できる構成です。\n",
-      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "body": "`SHIP_FILES` を開発用ZIPの出荷範囲とし、スキル実体に加えて開発用入口・テスト・fixture・再梱包ツールを明示列挙します。SVG描画の実装・入口・テストも含むため、展開先で保守・検証を続けられます。リポジトリ全体の再帰コピーを避け、Git履歴、生成レビュー、キャッシュ、個人設定の混入を抑えます。\n\n新しい保守対象を増やしたときは一覧も更新する必要があります。通常利用向けの[スキル単体梱包](review:dev/tools/package_skill.py#L28)とは配布目的が異なり、このZIPはテストと再出荷に必要な開発資料も運びます。\n",
+      "code_hash": "f099b819849f0384fa2612cbd4f56d11d8ad253c326dd65dd6cb02c329276aaf",
       "side": "new"
     },
     {
       "id": "integration-release-source-check",
       "file": "dev/tools/package_release.py",
-      "start_line": 132,
-      "end_line": 161,
+      "start_line": 105,
+      "end_line": 164,
       "title": "読み取ったバイト列を梱包と照合の共通入力にする",
-      "body": "出荷対象とその親のリンクを拒否し、解決後のパスがプロジェクト内か、必須ファイルがあるかを確認します。読込前後のサイズ・更新時刻の変化も検出します。\n\n検査したバイト列をpayloadへ保持し、後のZIP作成とHash計算に同じ内容を使います。複数ファイル全体をOSで同時に固定する処理ではないため、全ソースが同一時点だったことまで保証するロックではありません。\n",
-      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "body": "出荷対象とその親のリンク・Windows再解析ポイントを拒否し、解決後もプロジェクト内に収まり、必須の通常ファイルが存在することを確認します。読み込み前後のサイズ・更新時刻も比較し、通常の編集・保存と競合した入力を検出します。\n\n検査した元バイト列をpayloadに保持し、後続のZIP作成とHash計算の共通入力にします。出力名の事前検査もリンク・フォルダ・特殊ファイルを拒否しますが、権限や別プロセスのロックを予約するものではなく、実際の置換失敗は呼び出し元へ伝わります。ソース全体を同時点へ固定するロックでもありません。\n",
+      "code_hash": "f099b819849f0384fa2612cbd4f56d11d8ad253c326dd65dd6cb02c329276aaf",
       "side": "new"
     },
     {
       "id": "integration-release-archive-check",
       "file": "dev/tools/package_release.py",
-      "start_line": 164,
-      "end_line": 213,
+      "start_line": 167,
+      "end_line": 216,
       "title": "再現可能な並びで梱包し、完成候補を読み直す",
-      "body": "収録順・ZIPの日時・通常ファイル権限を固定し、各元バイト列のSHA-256一覧を同梱します。同じ内容・実行環境なら、更新日時だけでアーカイブが変わることを避けられます。\n\n候補ZIPを読み直し、余分な項目・重複・欠落・CRCと各本文を照合します。Hash一覧は内容の照合用であり、配布者の署名や真正性を証明する仕組みではありません。\n",
-      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "body": "収録ファイルの元バイト列からSHA-256一覧を作り、`SHA256SUMS` としてZIPへ同梱します。一覧自身のHashは自己参照になるため含めず、ソースのBOMや改行も変換しません。収録順・ZIP日時・通常ファイル権限を固定して、同じ内容・実行環境での再梱包を再現しやすくします。\n\n完成候補は収録名の集合と件数、CRC、各本文の全バイト列を読み直して照合します。余分な項目、重複、欠落、改変は正式出力の置換前に失敗します。Hashは内容照合のためのもので、配布者の署名や真正性を証明する仕組みではありません。\n",
+      "code_hash": "f099b819849f0384fa2612cbd4f56d11d8ad253c326dd65dd6cb02c329276aaf",
       "side": "new"
     },
     {
       "id": "integration-release-publication",
       "file": "dev/tools/package_release.py",
-      "start_line": 216,
-      "end_line": 266,
+      "start_line": 219,
+      "end_line": 269,
       "title": "検証済み候補だけを正式ZIPへ置き換える",
-      "body": "出力を固定のdev/distへ限定し、ZIPとHash出力の型を事前確認します。固有一時名で候補を作り、アーカイブ検証が終わるまで既存の正式ZIPを更新しません。\n\nZIPとHashファイルは個別にreplaceするため、二つ全体の同時トランザクションではありません。finallyで片付けるのは、この呼び出しがdist直下に作った一時ファイルだけです。\n",
-      "code_hash": "cc03ac1134b3a68de4fc4953cd583485c13e92edbaf098affe4b25fe5dc560e3",
+      "body": "出力を固定の `dev/dist` へ限定し、ZIPとHashファイルの正式名が置換可能な種類か先に確認します。固有の一時ファイルへ候補ZIPを作り、検証と外部Hashファイルの作成が成功するまで前回の正式ZIPに触れません。置換直前にも正式名を検査します。\n\n最後の二つのreplaceは個別操作で、ZIPとHashを障害時にも同時に確定するトランザクションではありません。finallyで片付けるのは、この呼び出しがdist直下へ作った一時ファイルだけです。既存の別ファイルやフォルダを再帰削除しません。\n",
+      "code_hash": "f099b819849f0384fa2612cbd4f56d11d8ad253c326dd65dd6cb02c329276aaf",
       "side": "new"
     },
     {
       "id": "integration-skill-metadata-check",
       "file": "dev/tools/package_skill.py",
-      "start_line": 63,
-      "end_line": 117,
+      "start_line": 64,
+      "end_line": 118,
       "title": "配布で使う範囲のfrontmatterを厳格に読む",
-      "body": "一般的なYAML全体を模倣せず、このスキルで採用する一行文字列のname・description・compatibilityだけを検証します。未知のキー、重複、空値、想定外の型に見える値を曖昧に通しません。\n\nスキル名と説明の長さも確認します。frontmatter構文を増やす場合はこの検査も変更する必要があり、汎用YAMLの互換パーサーとして使うAPIではありません。\n",
-      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "body": "汎用YAML全体を解釈せず、この配布で使う一行文字列の `name`・`description`・`compatibility` に対応範囲を限定します。ヘッダー境界、キーの重複・未知のキー、空文字、想定外の型に見える非引用値を拒否し、引用文字列は対応する構文で検証します。\n\nスキル名の一致、説明の長さと禁止文字、互換性欄の長さも確認します。frontmatterを拡張するときはこの検査も更新する契約であり、任意のYAML文書との互換性を提供するAPIではありません。\n",
+      "code_hash": "5450ad178df92ef02041f3cee24b0696bbe5023f703473b688bc4b5e6c2f6d7d",
       "side": "new"
     },
     {
       "id": "integration-skill-reference-check",
       "file": "dev/tools/package_skill.py",
-      "start_line": 120,
-      "end_line": 160,
+      "start_line": 121,
+      "end_line": 161,
       "title": "ローカル参照が配布物の外へ出ていないか確認する",
-      "body": "Markdownのコードフェンスを除いた本文からリンクを探し、相対パスを解決して収録ファイル・ディレクトリの存在を調べます。スキルを元リポジトリから切り離しても、補助資料へ辿れるようにする検査です。\n\nリンク解析は限定した正規表現で、Markdown全構文を解釈するものではありません。見出しアンカーの存在確認や、HTTPリンク先の取得も行いません。\n",
-      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "body": "Markdownのコードフェンスを除いた本文からインライン参照・参照定義を取り出し、URLデコードした相対パスを解決します。親への脱出、絶対パスやバックスラッシュ、収録されないファイルへの参照を拒否し、スキルだけを移した後も補助資料へ辿れるようにします。\n\nリンク解析は限定した正規表現です。HTTP等の外部参照は取得せず、見出しアンカーの実在確認やMarkdown全構文の解釈も行いません。ディスクに存在していてもpayloadへ収録しない資料へのリンクは通しません。\n",
+      "code_hash": "5450ad178df92ef02041f3cee24b0696bbe5023f703473b688bc4b5e6c2f6d7d",
       "side": "new"
     },
     {
       "id": "integration-skill-payload",
       "file": "dev/tools/package_skill.py",
-      "start_line": 163,
-      "end_line": 206,
+      "start_line": 164,
+      "end_line": 207,
       "title": "必須実装と補助Markdownだけを配布候補へ集める",
-      "body": "固定の必須ファイルへ、references配下のMarkdownと任意のagents/openai.yamlを加えます。リンクを追わず、読取エラーを資料がないものとして無視しない構成です。\n\n各ファイルの元bytesを読み、途中のサイズ・更新時刻変化を確認してから、frontmatterとローカルリンクを検証します。devのキャッシュや評価生成物を製品スキルへ混入させない境界です。\n",
-      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "body": "[固定の必須一覧](review:dev/tools/package_skill.py#L28)へ、references配下のMarkdownと任意のagents/openai.yamlを加えます。実行用Python、SVG描画ツール、HTML/UI・Worker、同梱ライブラリとライセンスがスキル内だけで揃う構成です。開発用のCLIや評価入力を再帰的に取り込むことはありません。\n\n収集時は各経路のリンク・再解析ポイントを拒否し、referencesの走査エラーも欠品として無視しません。各ファイルの読込前後でサイズ・更新時刻を比べ、読み取ったbytesに対してfrontmatterと同梱リンクを検証してから返します。複数ファイルを一斉に固定するロックではないため、生成中に元ソース全体が同一時点だったことまでは保証しません。\n",
+      "code_hash": "5450ad178df92ef02041f3cee24b0696bbe5023f703473b688bc4b5e6c2f6d7d",
       "side": "new"
     },
     {
       "id": "integration-skill-archive",
       "file": "dev/tools/package_skill.py",
-      "start_line": 234,
-      "end_line": 277,
+      "start_line": 210,
+      "end_line": 278,
       "title": ".skillと.zipを同じ検証済みバイト列から作る",
-      "body": "出力がスキル本体の内側にないこと、四つの出力名が通常ファイルとして置換可能なことを先に確認します。一時領域でZIPを作って読み直した後、その同じバイト列を.skill/.zipへ使います。\n\nSHA-256ファイルも同時に用意しますが、正式名への置換は一つずつです。通常の生成失敗で既存成果物を壊しにくくする手順で、複数ファイルを障害時にも一括切替する仕組みではありません。\n",
-      "code_hash": "1931efbaa94b94e006fccf070b898df9dc59bf8726d7d54425fac139bf41abea",
+      "body": "ZIP内の順序・日時・通常ファイル権限を固定し、読み取った元バイト列をそのまま圧縮します。完成候補は収録名の集合と件数、CRC、各ファイルの元バイト列を読み直して照合し、その同じZIPバイト列を `.skill` と `.zip` の両方へ使います。横に置くSHA-256は配布物全体の照合用です。\n\n出力先がスキル本体の中でないこと、四つの正式出力名が通常ファイルとして置換可能なことを先に確認します。一時領域ですべてを作成・検証してから正式名へ置換するため、候補検証失敗では旧成果物を更新しません。ただし最後の置換は一つずつで、四ファイル全体の同時切替や停電時の永続性を保証するものではありません。\n",
+      "code_hash": "5450ad178df92ef02041f3cee24b0696bbe5023f703473b688bc4b5e6c2f6d7d",
       "side": "new"
     },
     {
@@ -1128,7 +1188,7 @@
       "end_line": 84,
       "title": "専用の生成先と所有マーカーで検証入力を保護する",
       "body": "出力がdev/output/browser-acceptance配下に収まるか、経路にリンクがないかを検査します。既存の非空フォルダは専用マーカーが一致する場合だけ再利用し、無関係な出力先をfixtureとして扱わないようにしています。\n\n画面生成は本体のcreate_review・merge_comments・write_reviewを呼び、検証用に別の製品実装を作りません。この時点ではHTMLを用意しただけで、ブラウザーの合格判定ではありません。\n",
-      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "code_hash": "dbc9d2bca6ed41f7d65a6dc4adab282313d4ac161f9718ebb48b387250344c1e",
       "side": "new"
     },
     {
@@ -1138,7 +1198,7 @@
       "end_line": 188,
       "title": "長文・Hash変更・図・差分付加情報を目的別に再現する",
       "body": "長文と同じ開始行のカード、消失する参照行、対象から外れるファイル、SVG分岐図、本文が同じ権限変更をそれぞれ用意します。正常な短いコードだけでは見つけにくいUIの境界を再現するための入力です。\n\n固定カードは各fixtureの生成済みコードHashを採用し、未照合のケースだけ意図的にHashを省きます。実際のAI説明の品質を測る評価とは分けて読む必要があります。\n",
-      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "code_hash": "dbc9d2bca6ed41f7d65a6dc4adab282313d4ac161f9718ebb48b387250344c1e",
       "side": "new"
     },
     {
@@ -1147,8 +1207,8 @@
       "start_line": 214,
       "end_line": 267,
       "title": "五万行の生成内容と期待値を一致させる",
-      "body": "large.pyは50,000行、横長行、複数行文字列、改行なしの末尾を含みます。small.pyと合わせて2対象、解説2件・verified 2件を生成し、仮想化・Worker・遠い行への移動を同じ画面で確認する入力です。\n\nL259のexpectations.largeもlines 50000・comments 2・verified 2へ修正済みです。旧値の10,000行・解説1件という不一致は解消しています。[専用テスト](review:dev/tests/test_browser_acceptance.py#L1)は全受入ケースの数値期待値を実際のreview.jsonへ照合し、Hashの3段階も確認します。これはデータの整合確認であり、画面の合否は表示・操作を通して確かめます。\n",
-      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "body": "large.pyは50,000行、横長行、複数行文字列、改行なしの末尾を含みます。small.pyと合わせて2対象、解説2件・verified 2件を生成し、仮想化・Worker・遠い行への移動を同じ画面で確認する入力です。\n\nexpectationsは各ケースの件数や行数、照合状態、図数などを保持し、[専用テスト](review:dev/tests/test_browser_acceptance.py#L39)が全整数期待値を実際のreview.jsonへ照合します。HTMLの生成・数値一致は画面の合否ではありません。\n\n図ケースのexpected自由文には旧仕様の「diagram source in prompt」が残っていますが、[現在の質問文生成](review:skills/walkthrough-review/assets/ui/app.js#L766)は図の説明だけを添えます。この自由文は数値照合の対象外なので、現在の動作はUIロジックの質問文テストで確認する必要があります。\n",
+      "code_hash": "dbc9d2bca6ed41f7d65a6dc4adab282313d4ac161f9718ebb48b387250344c1e",
       "side": "new"
     },
     {
@@ -1158,7 +1218,7 @@
       "end_line": 322,
       "title": "自動コピーの二経路だけを開発用コピーで失敗させる",
       "body": "diffレビューの専用コピーを作り、Clipboard APIを拒否、execCommandのcopyをfalseにするスクリプトをapp.jsの前へ追加します。自動コピーが失敗しても、全文選択と手動コピーの案内へ進めるかを確認するためです。\n\n故障注入は開発用画面に限定し、他のexecCommand呼び出しやキーボードによるコピーは保ちます。通常の製品素材へこのスクリプトを混ぜないことが境界です。\n",
-      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "code_hash": "dbc9d2bca6ed41f7d65a6dc4adab282313d4ac161f9718ebb48b387250344c1e",
       "side": "new"
     },
     {
@@ -1168,7 +1228,7 @@
       "end_line": 350,
       "title": "ソース変更だけと再build後を段階的に比較する",
       "body": "mutate_hashは専用入力だけを12行から3行へ変え、HTMLのHashが変わらないことを確認します。静的HTMLが元コードを自動監視していないことを実演する段階です。\n\nrebuild_hashは変更後入力の形を確かめて同じ出力先へbuildし、コードHash不一致、消失した行、対象外になった解説を再現します。再読み込みだけで更新検出する仕様ではありません。\n",
-      "code_hash": "58ba02bb64f8e31d5fcbf8fd4c8d78167e8f49b5881923709a2d68d4e2a38f76",
+      "code_hash": "dbc9d2bca6ed41f7d65a6dc4adab282313d4ac161f9718ebb48b387250344c1e",
       "side": "new"
     },
     {
@@ -1180,6 +1240,16 @@
       "body": "絶対化したスクリプト自身の場所から、同梱prepare_review.pyを読み込みます。CLIならUTF-8出力でmainを実行し、importなら読み込んだ実体へモジュール参照を統一します。\n\n対象プロジェクトや作業先の決定は、このwrapperが別に実装せず、[配布側の準備処理](review:skills/walkthrough-review/scripts/prepare_review.py#L1)へ任せます。\n",
       "code_hash": "6deeb77d40366701f8835ddce008f302fee511fa32e3284289dc94d97968435b",
       "side": "new"
+    },
+    {
+      "id": "ui-svg-dev-entry",
+      "file": "dev/tools/render_svg.py",
+      "side": "new",
+      "start_line": 7,
+      "end_line": 19,
+      "title": "描画実装を複製せず開発用の入口だけを用意する",
+      "body": "リポジトリ内の正本である[スキル側の描画ツール](review:skills/walkthrough-review/scripts/render_svg.py#L27)をファイルパスから読み込みます。そのスクリプトが同梱のwalkthroughを使えるよう、先に正本のscriptsディレクトリをモジュール探索へ加えます。\n\nコマンドとして呼ばれた場合は標準出力・エラーをUTF-8へ設定し、正本のmainの終了値をそのまま返します。テストからimportされた場合も正本モジュールを返すので、保守や検証が別実装へ分岐しません。通常の単独配布はスキル側だけで成立し、この開発用の入口には依存しません。\n",
+      "code_hash": "05fb597c81b805fa66a3d4de51914ee6a5a2089cf39fe507e630cc58afb74957"
     },
     {
       "id": "integration-vendor-integrity",
@@ -1218,7 +1288,7 @@
       "end_line": 27,
       "title": "ユーザーの省略を既定値で補い、目的を理解支援に定める",
       "body": "一言の依頼でも対象、モード、作業先、説明、自己確認までAIが進める方針です。対象は現在のプロジェクトを根拠にし、ツールの配置場所から勝手に決めません。差分は明示されたときにだけ採用します。\n\n目的はコードの入口・責務・データの流れを人間が理解することです。通常の不具合列挙とは使い分け、必要な対象へアクセスできない場合など、本当に不足する情報だけを確認します。\n",
-      "code_hash": "801255df88ad4b7e351684ae3c00f6fab66c9f073d0b23bf689ee32d91f412fd",
+      "code_hash": "65581830cc56decefd3b71ad29ece6eecc8a144a2be1584c2866d690fbb6b6fe",
       "side": "new"
     },
     {
@@ -1227,15 +1297,15 @@
       "start_line": 49,
       "end_line": 74,
       "title": "コード取得・説明作成・確認を分けて完成させる",
-      "body": "buildがソース全文と行番号を固定し、AIはその固定版を読んでカードの意味を作ります。カード本文はMarkdownで1件ずつ保存し、巨大なコメントJSONを一度に書かせません。\n\n担当別確認が揃ったらexportで入力JSONを集約し、mergeでHTMLへ反映します。その後の最終buildで元コードの変更を検出し、必要ならカードを引き継いで読み直します。図はこの受け渡しを示し、各段階の成功だけでは最終完了にならない点を表しています。\n",
+      "body": "buildがソース全文と行番号を固定し、AIはその固定版を読んでカードの意味を作ります。本文Markdownは1件ずつ保存し、巨大なコメント配列を一度に手書きしません。\n\n担当別確認とreviewedがそろったらexportで入力を集約し、mergeでHTMLへ反映します。最終buildで元コードの変化を再検出し、変わった場合は旧Hashを保ってカードを引き継ぎ、コードと本文を再確認します。\n\n図はこの受け渡しと最終版の全図PNG確認を示します。レビュー全体のブラウザー操作を実行する工程ではなく、図の形式検証・画像生成・画像を開いた確認を区別します。\n",
       "diagrams": [
         {
           "title": "取得から自己確認、最終資料まで",
-          "description": "Pythonによる全文取得、Hash付きカードの個別作成、担当別確認、exportとmerge、最終buildと表示確認を順に行います。コードが変わった場合は説明も確認し直します。",
-          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 440 580\">\n<defs><marker id=\"flow-arrow\" markerWidth=\"10\" markerHeight=\"10\" refX=\"9\" refY=\"5\" orient=\"auto\"><path d=\"M0 0 L10 5 L0 10 Z\" fill=\"#476450\"/></marker></defs>\n<g font-family=\"sans-serif\" font-size=\"17\" text-anchor=\"middle\" fill=\"#24442f\">\n<text x=\"220\" y=\"28\">資料が完成するまでの流れ</text>\n<rect x=\"60\" y=\"50\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#edf5e9\" stroke=\"#719366\"/><text x=\"220\" y=\"79\">対象を選ぶ → build</text><text x=\"220\" y=\"103\" font-size=\"15\">Pythonがコード全文を取得</text>\n<path d=\"M220 124 V148\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"155\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#e9f2f6\" stroke=\"#648c9d\"/><text x=\"220\" y=\"184\">カードを1件ずつ作る</text><text x=\"220\" y=\"208\" font-size=\"15\">固定コードにHashを結び付ける</text>\n<path d=\"M220 229 V253\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"260\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#fff7e3\" stroke=\"#ac9453\"/><text x=\"220\" y=\"289\">担当別の自己確認</text><text x=\"220\" y=\"313\" font-size=\"15\">全文・説明・行・図を照合</text>\n<path d=\"M220 334 V358\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"365\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#edf5e9\" stroke=\"#719366\"/><text x=\"220\" y=\"394\">export → merge</text><text x=\"220\" y=\"418\" font-size=\"15\">確認済みカードと概要を集約</text>\n<path d=\"M220 439 V463\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"470\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#e9f2f6\" stroke=\"#648c9d\"/><text x=\"220\" y=\"499\">最終build → HTMLを渡す</text><text x=\"220\" y=\"523\" font-size=\"15\">コード変更と画面を再確認</text>\n<text x=\"220\" y=\"568\" font-size=\"14\">コードが変わった場合は説明も再確認</text>\n</g></svg>"
+          "description": "Pythonによる全文取得、Hash付きカードの個別作成、担当別確認、exportとmerge、最終buildと全図のPNG確認を順に行います。コードが変わった場合は説明も確認し直します。レビュー全体のブラウザー操作確認は含みません。\n",
+          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 440 580\">\n<defs><marker id=\"flow-arrow\" markerWidth=\"10\" markerHeight=\"10\" refX=\"9\" refY=\"5\" orient=\"auto\"><path d=\"M0 0 L10 5 L0 10 Z\" fill=\"#476450\"/></marker></defs>\n<g font-family=\"sans-serif\" font-size=\"17\" text-anchor=\"middle\" fill=\"#24442f\">\n<text x=\"220\" y=\"28\">資料が完成するまでの流れ</text>\n<rect x=\"60\" y=\"50\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#edf5e9\" stroke=\"#719366\"/><text x=\"220\" y=\"79\">対象を選ぶ → build</text><text x=\"220\" y=\"103\" font-size=\"15\">Pythonがコード全文を取得</text>\n<path d=\"M220 124 V148\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"155\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#e9f2f6\" stroke=\"#648c9d\"/><text x=\"220\" y=\"184\">カードを1件ずつ作る</text><text x=\"220\" y=\"208\" font-size=\"15\">固定コードにHashを結び付ける</text>\n<path d=\"M220 229 V253\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"260\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#fff7e3\" stroke=\"#ac9453\"/><text x=\"220\" y=\"289\">担当別の自己確認</text><text x=\"220\" y=\"313\" font-size=\"15\">全文・説明・行・図を照合</text>\n<path d=\"M220 334 V358\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"365\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#edf5e9\" stroke=\"#719366\"/><text x=\"220\" y=\"394\">export → merge</text><text x=\"220\" y=\"418\" font-size=\"15\">確認済みカードと概要を集約</text>\n<path d=\"M220 439 V463\" stroke=\"#476450\" stroke-width=\"2\" marker-end=\"url(#flow-arrow)\"/>\n<rect x=\"60\" y=\"470\" width=\"320\" height=\"70\" rx=\"9\" fill=\"#e9f2f6\" stroke=\"#648c9d\"/><text x=\"220\" y=\"499\">最終build → 全図を確認</text><text x=\"220\" y=\"523\" font-size=\"15\">図をPNG化し、確認して渡す</text>\n<text x=\"220\" y=\"568\" font-size=\"14\">コードが変わった場合は説明も再確認</text>\n</g></svg>"
         }
       ],
-      "code_hash": "801255df88ad4b7e351684ae3c00f6fab66c9f073d0b23bf689ee32d91f412fd",
+      "code_hash": "65581830cc56decefd3b71ad29ece6eecc8a144a2be1584c2866d690fbb6b6fe",
       "side": "new"
     },
     {
@@ -1244,8 +1314,18 @@
       "start_line": 63,
       "end_line": 84,
       "title": "Hash・確認記録・意味・表示の四つを確認する",
-      "body": "担当は全文と各説明を照合し、親は対象漏れとファイル間の接続を確認します。形式検証が通っても説明の意味の確認は別に必要です。解説不足を埋めるために全行へ機械的にカードを付ける方針ではありません。\n\n最終成果物はHash一致・行範囲有効・警告の解決に加え、埋込JSONと素材、利用可能なら実際の画面まで確認します。未実施の検証や対象外の範囲も伝え、成果物フォルダ全体を引き渡します。\n",
-      "code_hash": "801255df88ad4b7e351684ae3c00f6fab66c9f073d0b23bf689ee32d91f412fd",
+      "body": "担当全体で固定全文と全カードを照合し、親が対象漏れとファイル間の接続を確認します。形式検証だけで説明の意味が正しいとは扱わず、全行へ機械的にカードを付けることも求めません。\n\n最終buildで元コードの変更を再確認し、Hash一致・行範囲・参照・警告・埋込JSON・同梱素材を確認します。図がある場合は最終版の全図をPNGへ描いてAIが画像を開きます。レビュー全体のブラウザー操作確認は行いません。対象外や残る制約を明示し、成果物フォルダ全体を渡します。\n",
+      "code_hash": "65581830cc56decefd3b71ad29ece6eecc8a144a2be1584c2866d690fbb6b6fe",
+      "side": "new"
+    },
+    {
+      "id": "parent-question-handoff",
+      "file": "skills/walkthrough-review/SKILL.md",
+      "start_line": 86,
+      "end_line": 90,
+      "title": "エージェントが読めるコードは質問文へ重複添付しない",
+      "body": "質問文の基本はプロジェクト・パスと行範囲・利用者の質問です。エージェントが指定コードを直接読めるため、コード本文・Hash・生成日時・重複する参照は付けません。\n\n解説カードからはそのタイトルと本文、図のタイトルと文章の説明を添えます。旧版の区別、権限・名前変更等の差分、対象解説の警告は短く残します。[生成処理](review:skills/walkthrough-review/assets/ui/app.js#L766)が文面を作るだけで、送信先や自動回答の機能はありません。\n",
+      "code_hash": "65581830cc56decefd3b71ad29ece6eecc8a144a2be1584c2866d690fbb6b6fe",
       "side": "new"
     },
     {
@@ -1265,8 +1345,8 @@
       "start_line": 24,
       "end_line": 85,
       "title": "一覧・コード・解説の三つの閲覧領域",
-      "body": "左は検索と対象フィルタを備えた全ファイル一覧、中央は概要・コード・表示不能理由を切り替える領域、右は解説または対象外一覧です。中央のcode-scrollと右のdetail-scrollを独立させることで、長いコードと解説をそれぞれ読み進められます。\n\nコード本文やカードは空の領域へ[JavaScriptの画面切替](review:skills/walkthrough-review/assets/ui/app.js#L645)が配置します。本文以外の差分、行質問、連動切替も専用要素を持ち、hiddenとaria属性で状態を伝えます。IDは実装との接点であり、[UIテスト](review:dev/tests/ui_logic.test.cjs#L510)が欠落・重複を確認します。\n",
-      "code_hash": "6641a56fbb356aa14c7a1127e18ac0013b7b2e45ae82e5e5e20425ecef084a09"
+      "body": "左は検索と対象フィルタを備えた全ファイル一覧、中央は概要・コード・表示不能理由を切り替える領域、右は解説または対象外一覧です。中央のcode-scrollと右のdetail-scrollを独立させることで、長いコードと解説をそれぞれ読み進められます。\n\nコード本文やカードは空の領域へ[JavaScriptの画面切替](review:skills/walkthrough-review/assets/ui/app.js#L645)が配置します。本文以外の差分、行質問、連動切替も専用要素を持ち、hiddenとaria属性で状態を伝えます。IDは実装との接点であり、[UIテスト](review:dev/tests/ui_logic.test.cjs#L520)が欠落・重複を確認します。\n",
+      "code_hash": "4f9a9652c04c235fd751a8b4e022138241d16e9ee848e603725ff8e071b51a0a"
     },
     {
       "id": "ui-template-dialogs",
@@ -1275,8 +1355,8 @@
       "start_line": 88,
       "end_line": 104,
       "title": "図の拡大と質問文の作成をダイアログに分ける",
-      "body": "図は説明付きの拡大領域、質問は参照表示・質問入力・生成済みプロンプト・コピー結果を持つdialogです。質問の送信先をHTML内に持たず、作った文章を利用者がコーディングエージェントへ渡す操作になっています。\n\n入力のlabel、閉じるボタンのaria-label、コピー結果と画面下のaria-live領域により、視覚以外でも操作結果を追える構造です。メインへ移るスキップリンクはページ先頭に置かれ、[イベント処理](review:skills/walkthrough-review/assets/ui/app.js#L823)で現在のファイルを保持したままフォーカスを移します。\n",
-      "code_hash": "6641a56fbb356aa14c7a1127e18ac0013b7b2e45ae82e5e5e20425ecef084a09"
+      "body": "図は説明付きの拡大領域、質問は参照表示・質問入力・生成済みプロンプト・コピー結果を持つdialogです。質問の送信先をHTML内に持たず、作った文章を利用者がコーディングエージェントへ渡す操作になっています。\n\n入力のlabel、閉じるボタンのaria-label、コピー結果と画面下のaria-live領域により、視覚以外でも操作結果を追える構造です。メインへ移るスキップリンクはページ先頭に置かれ、[イベント処理](review:skills/walkthrough-review/assets/ui/app.js#L803)で現在のファイルを保持したままフォーカスを移します。\n",
+      "code_hash": "4f9a9652c04c235fd751a8b4e022138241d16e9ee848e603725ff8e071b51a0a"
     },
     {
       "id": "ui-template-data",
@@ -1286,7 +1366,7 @@
       "end_line": 106,
       "title": "オフライン画面へデータとWorkerを渡す",
       "body": "生成時にレビューデータとWorker用ソースを、それぞれ実行されないapplication/json要素へ埋め込みます。[画面の入口](review:skills/walkthrough-review/assets/ui/app.js#L12)は前者をJSONとして読み、[色付けの起動](review:skills/walkthrough-review/assets/ui/app.js#L256)は後者からBlob Workerを作ります。\n\n先頭で読み込むCSS・Marked・app.jsも同梱assetsへの相対参照です。defer付きのapp.jsはHTML構築後に起動するため、各IDを持つ操作要素と埋め込みJSONが揃った状態で初期化できます。資料一式を保持して閲覧する構成です。\n",
-      "code_hash": "6641a56fbb356aa14c7a1127e18ac0013b7b2e45ae82e5e5e20425ecef084a09"
+      "code_hash": "4f9a9652c04c235fd751a8b4e022138241d16e9ee848e603725ff8e071b51a0a"
     },
     {
       "id": "ui-app-entry",
@@ -1296,7 +1376,7 @@
       "end_line": 47,
       "title": "固定JSONを一度読み、閲覧状態を分離する",
       "body": "画面はreview-dataの埋め込みJSONだけを入口にし、schema_version=2とfiles/inventory配列を確認します。JSONの破損や未対応形式なら、例外メッセージをtextContentで入れた警告へ画面を置き換えて停止します。ここはデータ構造の最低限の確認であり、各カードや行の妥当性は生成側の検証結果を使います。\n\n本文対象と全ファイル一覧をパスのMapへ分け、画面切替・行・選択・描画世代・Worker・スクロール連動をstateへ保持します。元の保存データを編集する機能はありません。対象外の簡略一覧ではGit除外対象とドットフォルダ配下を省きますが、inventory自体は保持され、「すべて」から参照できます。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-hashes",
@@ -1306,7 +1386,7 @@
       "end_line": 68,
       "title": "生成側の照合結果を警告へつなぐ",
       "body": "カードのhash_statusをverified/mismatch/missingの三状態で読み、不明値は未照合として扱います。ブラウザーでHashを再計算するのではなく、作成時Hash・表示中Hashと生成側の照合結果を表示します。\n\ndata.hash_warningsがあればそれを採用し、なければ各カードのHash・消失範囲・リンク警告から補います。対象を失った解説も件数とself-review.mdへの案内で残します。警告がないことは説明内容そのものの正しさを証明せず、[カード表示](review:skills/walkthrough-review/assets/ui/app.js#L489)でも未照合と移動不能を明示します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-markdown",
@@ -1315,8 +1395,8 @@
       "start_line": 70,
       "end_line": 116,
       "title": "Markdownから許可した文書要素だけを残す",
-      "body": "Markedの生HTMLレンダラーはHTML記法を文字へエスケープします。さらに解析後のDOMを許可リストで絞り、全属性を一度消してから必要なものだけを戻します。画像はalt文字へ置き換え、入力は操作できないチェックボックスだけ残します。\n\nリンクはレビュー内参照、http/https、ページ内参照を扱います。外部リンクは新規タブとnoopener/noreferrerを付け、レビュー内参照は[専用の参照移動](review:skills/walkthrough-review/assets/ui/app.js#L891)へ渡します。Markedを利用できなければ、改行を保ったプレーンテキストで読めます。SVG図はこの経路でHTMLにせず、[画像として表示](review:skills/walkthrough-review/assets/ui/app.js#L445)します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "body": "Markedの生HTMLレンダラーはHTML記法を文字へエスケープします。さらに解析後のDOMを許可リストで絞り、全属性を一度消してから必要なものだけを戻します。画像はalt文字へ置き換え、入力は操作できないチェックボックスだけ残します。\n\nリンクはレビュー内参照、http/https、ページ内参照を扱います。外部リンクは新規タブとnoopener/noreferrerを付け、レビュー内参照は[専用の参照移動](review:skills/walkthrough-review/assets/ui/app.js#L871)へ渡します。Markedを利用できなければ、改行を保ったプレーンテキストで読めます。SVG図はこの経路でHTMLにせず、[画像として表示](review:skills/walkthrough-review/assets/ui/app.js#L445)します。\n",
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-tree",
@@ -1326,7 +1406,7 @@
       "end_line": 211,
       "title": "全一覧から検索・対象別ツリーを組み立てる",
       "body": "inventoryを対象/対象外/すべてとパス検索で絞り、フォルダをMapでまとめて名前順に描画します。検索中はフォルダを開き、通常の再描画では既存の開閉状態を引き継ぎます。ボタンのパスと一覧情報をtextContentで表示し、選択中ファイルをaria-currentで示します。\n\n右の対象外一覧と対象外フィルタは同じ判定を使います。簡略一覧が空でも「表示する対象外ファイルはありません」とし、全ファイル確認済みとは扱いません。概要では走査数・本文対象数・簡略一覧数、走査警告、生成日時を表示します。本文を取り込まないファイルも一覧の対象なので、選ぶと[理由表示](review:skills/walkthrough-review/assets/ui/app.js#L681)へ進みます。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-rows",
@@ -1335,8 +1415,8 @@
       "start_line": 213,
       "end_line": 229,
       "title": "圧縮ブロックから閲覧中ファイルの行を復元する",
-      "body": "保存データのblocksを、旧行番号・新行番号・差分種別・本文・末尾改行の有無を持つ行へ展開します。ブロック終端の改行を一つだけ外して分割するため、本文中の空行と「最終行に改行がない」の違いを保持できます。old_textがある特例は旧側の本文として残します。\n\n展開は選んだファイルに対して行い、blocksへ書き戻しません。この行配列が[行Mapと仮想表示](review:skills/walkthrough-review/assets/ui/app.js#L399)、[旧新を分ける質問文](review:skills/walkthrough-review/assets/ui/app.js#L766)の共通の参照元です。DOMを少なくしても行配列自体はファイル全文分を保持します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "body": "保存データのblocksを、旧行番号・新行番号・差分種別・本文・末尾改行の有無を持つ行へ展開します。ブロック終端の改行を一つだけ外して分割するため、本文中の空行と「最終行に改行がない」の違いを保持できます。old_textがある特例は旧側の本文として残します。\n\n展開は選んだファイルに対して行い、blocksへ書き戻しません。この行配列は[行Mapと仮想表示](review:skills/walkthrough-review/assets/ui/app.js#L399)の参照元であり、[行の質問ボタン](review:skills/walkthrough-review/assets/ui/app.js#L831)も旧新版と行番号をここから取り出します。質問文へコード本文は添付しません。DOMを少なくしても行配列自体はファイル全文分を保持します。\n",
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-cache",
@@ -1346,7 +1426,7 @@
       "end_line": 247,
       "title": "再訪時の色付けを容量付きで再利用する",
       "body": "Prismの解析結果はパスをキーに保持し、再訪時にWorkerを起こさず使います。既存項目の更新では以前の文字数を引き、最大2ファイル・HTML文字列の合計800万文字以内になるまで古い項目を捨てます。単体で800万文字を超える結果は現在の表示には使い、キャッシュへは入れません。\n\n[参照時](review:skills/walkthrough-review/assets/ui/app.js#L256)に項目をMapの末尾へ移すので、最近使った結果が残ります。上限は文字数と件数であり、JavaScriptオブジェクトを含む実メモリー量の厳密な上限ではありません。静的スナップショット内の再訪を前提にしたパスキーです。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-highlight-job",
@@ -1356,7 +1436,7 @@
       "end_line": 299,
       "title": "色付けを非同期化し、切替後の結果を混ぜない",
       "body": "埋め込まれたPrism込みソースからBlob Workerを作り、旧新の本文を分けて送ります。削除行がある場合は旧側も解析し、通常は新版だけを解析します。完了時は描画世代とWorkerの同一性を確認してから現在画面へ反映します。\n\nファイル切替・エラー・15秒のタイムアウトではWorkerを停止し、タイマーとBlob URLを解放します。Worker未対応や起動失敗、文法なしでもエスケープ済み本文が先に読めます。色付け後は画面内の行だけ塗り直し、末尾改行なしの表示を付けます。解析アルゴリズムは[Worker側](review:skills/walkthrough-review/assets/ui/highlight-worker.js#L2)に分かれています。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-virtual",
@@ -1365,8 +1445,8 @@
       "start_line": 301,
       "end_line": 385,
       "title": "行Mapと余白で全文位置を保ち、表示行だけDOMへ置く",
-      "body": "旧新それぞれの行番号Mapからコード上の配列位置を引き、解説範囲や選択範囲をDOMの有無に依存せず扱います。表示範囲はスクロール位置と固定行高から求め、上下20行を余分に用意します。範囲外の行を取り除き、共通する行のDOMは再利用します。\n\n上下のスペーサーが全文相当の高さを作り、過去に見えた横幅も維持して横スクロールの巻戻りを抑えます。取り除く行にフォーカスがあればコード領域へ移します。各行は旧新番号・差分記号・本文・質問ボタンを持ち、クリックは[親領域の一つのハンドラー](review:skills/walkthrough-review/assets/ui/app.js#L851)へ委譲します。\n\n本文データは全文を保持しますが、通常時のDOMは表示窓と前後の行だけです。そのためブラウザー標準のページ内検索や画面上のテキスト選択では、画面外を含むコード全文を検索・取得できるとは限りません。左の検索欄も[ファイルパスの絞込み](review:skills/walkthrough-review/assets/ui/app.js#L135)です。全文を文字として確認するには同梱のself-review.mdを利用できます。印刷前のイベントでは現在のファイルの窓を全行へ広げ、終了後に仮想表示へ戻します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "body": "旧新それぞれの行番号Mapからコード上の配列位置を引き、解説範囲や選択範囲をDOMの有無に依存せず扱います。表示範囲はスクロール位置と固定行高から求め、上下20行を余分に用意します。範囲外の行を取り除き、共通する行のDOMは再利用します。\n\n上下のスペーサーが全文相当の高さを作り、過去に見えた横幅も維持して横スクロールの巻戻りを抑えます。取り除く行にフォーカスがあればコード領域へ移します。各行は旧新番号・差分記号・本文・質問ボタンを持ち、クリックは[親領域の一つのハンドラー](review:skills/walkthrough-review/assets/ui/app.js#L831)へ委譲します。\n\n本文データは全文を保持しますが、通常時のDOMは表示窓と前後の行だけです。そのためブラウザー標準のページ内検索や画面上のテキスト選択では、画面外を含むコード全文を検索・取得できるとは限りません。左の検索欄も[ファイルパスの絞込み](review:skills/walkthrough-review/assets/ui/app.js#L135)です。全文を文字として確認するには同梱のself-review.mdを利用できます。印刷前のイベントでは現在のファイルの窓を全行へ広げ、終了後に仮想表示へ戻します。\n",
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-render",
@@ -1376,7 +1456,7 @@
       "end_line": 443,
       "title": "世代番号で描画切替を管理し、行高変更を追う",
       "body": "ファイル選択時に行番号Mapとスペーサーを作り直し、行数・差分数・aria-busyを更新します。一度イベントループへ戻ってから描画し、描画世代が変わっていれば古い処理は終了します。保留中の行移動は新しい描画の完了後に適用し、最後に色付けを依頼します。\n\n画面サイズなどでCSSの行高が変わると、スクロール位置を旧行高から新行高の比率で換算し、表示行と解説アンカーを再計算します。これにより[25px/27pxのCSS](review:skills/walkthrough-review/assets/ui/style.css#L11)と仮想化の計算を揃えます。空ファイルは空状態を表示し、本文がない場合も読み込み中の表示を残しません。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-diagram",
@@ -1386,7 +1466,7 @@
       "end_line": 487,
       "title": "SVGを説明付き画像へ隔離し、失敗時も説明を残す",
       "body": "図のタイトル・説明は文字列としてDOMへ置き、SVGはURLエンコードしたdata URLをimgへ渡します。SVG要素をページのDOMへ直接挿入せず、画像のaltにも説明を付けます。カード本文のMarkdown表示とは別の経路です。\n\n画像読込み後は高さが変わるため解説アンカーを計算し直します。SVG欠損や画像エラーなら画像を隠し、説明と失敗メッセージを残して拡大ボタンを無効にします。拡大画面では同じ図を再利用し、さらに拡大ボタンを付けないことでダイアログの多重起動を避けます。生成時のSVG入力検証と合わせて使う表示境界です。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-comments",
@@ -1396,7 +1476,7 @@
       "end_line": 560,
       "title": "解説カードを実在行へ結び、警告と質問を残す",
       "body": "カードは旧新それぞれの開始行を表示順へ変換して並べます。Hash不一致・未照合・消失範囲・リンク警告を見える形で残し、範囲が消えた場合はコード移動を無効にしても解説と質問は残します。照合済みは注意枠を出さず、通常の説明を読み進められます。\n\n行範囲ボタンに加え、本文・見出し・余白のクリックでも対応行へ移動します。ただし子のリンク・質問・図拡大、既に処理されたイベント、文章選択中のクリックを優先し、コピーや別操作を奪いません。カードIDも移動先へ渡すため、同じ行を扱う複数カードを区別できます。activeカードの切替は画面内のコード強調へ反映します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-scrollmaps",
@@ -1406,7 +1486,7 @@
       "end_line": 609,
       "title": "カードの開始位置から双方向の対応表を作る",
       "body": "各カードの開始行を固定行高からコード上の高さへ換算し、右側の実際のカード位置と対にします。仮想化で画面外のコード行DOMがなくても、この計算は可能です。消失範囲のカードはアンカーから除きます。\n\nmakeScrollMapsは各ペインで到達可能な範囲に位置を丸め、開始と末尾を結ぶ方向別の折れ線を作ります。同じコード行の複数カードでは右側から読んでいる間コードを同じ位置に保ち、コード側の同じ位置には最初の対応を採用します。末尾の対応を必ず各ペインの最下部へ置き、届かないカード位置が末尾移動を妨げないようにします。中間位置は線形補間します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-sync",
@@ -1416,7 +1496,7 @@
       "end_line": 643,
       "title": "連動スクロールの往復を抑え、現在のカードを追う",
       "body": "スクロール元の位置からアクティブなカードを決め、連動が有効なら対応表で相手の位置を補間します。右ペインからの操作では実際のカード位置も使い、最下部では最後のカードを選びます。連動を切っていてもカードの選択状態は追従します。\n\nプログラムによる位置変更はstate.sourceで反射イベントを区別し、requestAnimationFrameへまとめて過剰な処理を抑えます。明示的な参照移動の直後は短時間の抑制期間を置き、スクロール連動が移動先を書き戻すのを防ぎます。画像や画面サイズの変更時には[対応表を再計算](review:skills/walkthrough-review/assets/ui/app.js#L596)する前提です。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-show",
@@ -1426,7 +1506,7 @@
       "end_line": 698,
       "title": "概要・本文・対象外を切り替え、古い閲覧状態を捨てる",
       "body": "showは画面切替の中心です。世代番号を進め、実行中の色付けを取り消し、選択・保留移動・行配列を新しいパスへ切り替えます。本文対象ならコードと解説を描き、対象外や見つからないパスなら保存された一覧情報に応じた理由・状態・サイズを表示します。\n\n概要へ戻ると本文DOMとアンカーも消します。一覧の選択状態と親フォルダの展開、携帯画面のメニュー状態、読み上げ通知をまとめて更新します。本文対象外の選択を、本文があるように扱ったりレビュー済みと判断したりはしません。行付きの初回表示は[描画完了まで保留](review:skills/walkthrough-review/assets/ui/app.js#L438)します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-navigation",
@@ -1436,27 +1516,27 @@
       "end_line": 752,
       "title": "URLの範囲とカードIDを使って参照移動を再現する",
       "body": "移動先をfile・line・side・end・commentのハッシュへ保存し、戻る/進むや同じ参照の再選択でも範囲へ移動します。同じファイル内なら全面再描画を避け、必要な仮想行を表示して行頭へ横スクロールを戻し、対象を強調します。\n\n解説を選ぶ際は有効範囲かつ同じ旧新版だけを候補にし、指定カードIDが範囲内なら優先します。指定がなければ範囲を含む最初のカード、その後に始まるカードを探します。同じ行を説明する2枚目が最初のカードへ戻る問題を避ける設計です。行がなければ読み上げ通知で知らせます。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-prompt",
       "file": "skills/walkthrough-review/assets/ui/app.js",
       "side": "new",
       "start_line": 754,
-      "end_line": 821,
-      "title": "参照・版・照合結果を伴う質問文を作り、コピーする",
-      "body": "質問を開いた時点のファイルと行配列を保持し、指定範囲の旧新番号・差分記号・本文を質問文へ入れます。消失した解説範囲には無関係なコードを代入しません。パスを要素ごとにURLエンコードした参照、生成日時、両版Hash、解説の照合警告、本文以外の差分も残します。\n\n解説指定なら本文と図、行指定なら範囲が重なる解説の図、ファイル全体なら全図の説明とSVG全文を付けます。コードやSVG内の最長バッククォート列より長いフェンスを使い、質問文の構造が崩れるのを防ぎます。Clipboard APIが使えない場合は従来のコピーを試し、最後は全文選択と手動コピーの案内へ進みます。HTMLからAIへ自動送信する処理はありません。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "end_line": 801,
+      "title": "パスと行番号を中心に質問文をまとめ、コピーする",
+      "body": "質問を開いた時点の対象ファイルと、旧新版・行範囲・選択した解説を保持します。生成する文章の基本はプロジェクト、パスと行範囲、入力した質問です。コードは貼付け先のエージェントがパスから読む前提なので、コード本文・ハッシュ値・生成日時・重複するレビュー参照を添付しません。旧行や削除ファイルは旧版と明示します。\n\n解説カードからの質問だけ、そのタイトルと本文、図のタイトルと文章による説明を添えます。SVG全文や関連する他カードの図は含めません。対象解説の不一致・未照合・消失範囲・参照リンク警告は短く残し、権限変更・名前変更など本文以外の差分も渡します。\n\nClipboard APIが使えなければ全文選択して従来のコピーを試し、それも失敗した場合は手動コピーを案内します。HTMLからAIへ送信する処理はなく、作成した質問文を利用者が渡します。\n",
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-app-events",
       "file": "skills/walkthrough-review/assets/ui/app.js",
       "side": "new",
-      "start_line": 823,
-      "end_line": 923,
+      "start_line": 803,
+      "end_line": 903,
       "title": "画面操作と参照リンクを初期化へ結ぶ",
       "body": "検索・フィルタ・概要・モバイル一覧・連動切替・行質問・ダイアログを接続し、最後に概要、警告、対象外一覧、ツリー、URL参照の順に初期表示します。コード行クリックは親要素に委譲して、仮想化で行DOMが入れ替わっても機能します。\n\nレビュー内リンクは専用形式を解析してパスを復号し、対象ファイルであることを確認して旧新の行範囲へ移動します。検索ショートカットは入力中とダイアログ中を除外し、スキップリンクは現在のファイルを保って中央へフォーカスします。resize・ResizeObserver・図の読込みで連動位置を再計算し、印刷前に全行を出して印刷後に仮想表示へ戻します。\n",
-      "code_hash": "94b4899b82041cff1723ebec07bf478e47f5329472b1dfb9e4aed9986a77aedb"
+      "code_hash": "608e3b59677fcfb9ea4c75ed4b2b42385b060e1d1439971d256b75471ea2e1ce"
     },
     {
       "id": "ui-worker",
@@ -1495,7 +1575,7 @@
       "start_line": 13,
       "end_line": 16,
       "title": "図の可読性と印刷時の全行表示を支える",
-      "body": "本文以外の差分は高さを制限したスクロール領域に、SVG図は説明文と画像枠に表示します。拡大ダイアログは最大1200px、ダイアログ内の画像は最小640pxとし、収まらない図を横スクロールで読めるようにしています。画像エラーの文章も専用の見た目を持ちます。\n\n印刷時はサイドバー、コードの操作バー、行質問、連動、図拡大などを隠し、表示ペインの高さ・overflow・コードの固定行高を解除して折り返します。行番号やカード内の質問ボタンを一律に消す指定ではありません。[beforeprint/afterprint](review:skills/walkthrough-review/assets/ui/app.js#L912)が閲覧中ファイルの全行を展開する処理と組み合わせます。全対象ファイルを巡回して印刷する機能はなく、ページ分割や最終的な印刷結果はブラウザー側の確認が必要です。\n",
+      "body": "本文以外の差分は高さを制限したスクロール領域に、SVG図は説明文と画像枠に表示します。拡大ダイアログは最大1200px、ダイアログ内の画像は最小640pxとし、収まらない図を横スクロールで読めるようにしています。画像エラーの文章も専用の見た目を持ちます。\n\n印刷時はサイドバー、コードの操作バー、行質問、連動、図拡大などを隠し、表示ペインの高さ・overflow・コードの固定行高を解除して折り返します。行番号やカード内の質問ボタンを一律に消す指定ではありません。[beforeprint/afterprint](review:skills/walkthrough-review/assets/ui/app.js#L892)が閲覧中ファイルの全行を展開する処理と組み合わせます。全対象ファイルを巡回して印刷する機能はなく、ページ分割や最終的な印刷結果はブラウザー側の確認が必要です。\n",
       "code_hash": "230b3383a2f1b0de38b87eb43dd2bdd8826ad3004b621cfff0f71626410e695d"
     },
     {
@@ -1505,7 +1585,7 @@
       "end_line": 58,
       "title": "固定コードを小分けに読み、本文だけを1件ずつ渡す",
       "body": "readは行数と本文文字数の両方に上限を持ち、長い1行もoffsetで続けて読みます。nextがなくなるまで進めることで、一部だけを見て全文確認済みと扱うことを避けます。\n\naddへ渡す中心はMarkdown本文と小さなメタ情報です。固定版のHash付与、JSONの引用符やSVG文字列のエスケープはツールが担当し、LLMが全カード配列を手書きする負担を減らします。\n\nIDは大小文字だけが異なる場合も重複として拒否します。担当名の表記も既存名へ合わせ、Windows上で同じ保存先を別名として上書きすることを防ぎます。\n",
-      "code_hash": "65af84a2a218b37a08fff0722986cb6bd3f9d2e2ab3133865a29280ebfdc2976",
+      "code_hash": "4a3f95e41ab1f160b2a73221c804f9ec21a0b611cf3b3fe962a3476c47abe0fc",
       "side": "new"
     },
     {
@@ -1515,7 +1595,7 @@
       "end_line": 92,
       "title": "個別修正と確認記録を対応付けて再開できるようにする",
       "body": "statusは本文を再掲せず、showは一枚だけを取得します。updateは指定項目だけを変更し、removeはカードを退避して集約対象から外します。担当の分離は他担当のカードを誤って上書きしないためにも使われます。\n\nreviewedは現在のコードとカード集合に対する自己確認の申告です。カードを変えると記録も古くなり、再確認が必要になります。非空ファイルへ説明不要と判断した場合も理由を残し、単なる作業漏れと区別します。\n",
-      "code_hash": "65af84a2a218b37a08fff0722986cb6bd3f9d2e2ab3133865a29280ebfdc2976",
+      "code_hash": "4a3f95e41ab1f160b2a73221c804f9ec21a0b611cf3b3fe962a3476c47abe0fc",
       "side": "new"
     },
     {
@@ -1525,7 +1605,7 @@
       "end_line": 125,
       "title": "確認済み集合だけを集約し、変更後は旧Hashを維持して引き継ぐ",
       "body": "親が概要を統合し、全対象の確認記録とカード検証が揃った段階でexportします。mergeは概要と全コメントの置換なので、一枚だけの入力JSONを直接渡して既存説明を落とさない手順です。\n\n最終buildでコード変更が分かったら、新しいストアへ旧カードを保持して渡します。変更したコードへの再読と本文確認を経て明示的に再結合し、Hashだけを更新して不一致を隠さない方針になっています。\n",
-      "code_hash": "65af84a2a218b37a08fff0722986cb6bd3f9d2e2ab3133865a29280ebfdc2976",
+      "code_hash": "4a3f95e41ab1f160b2a73221c804f9ec21a0b611cf3b3fe962a3476c47abe0fc",
       "side": "new"
     },
     {
@@ -1535,7 +1615,7 @@
       "end_line": 25,
       "title": "保存はカード単位、分担は責務単位にする",
       "body": "サブエージェントは利用可能・許可済みで独立範囲へ分ける効果がある場合に使います。親が共通の固定スナップショットを用意し、担当一覧とID接頭辞、完了条件を渡します。\n\nカード一枚ごとに起動したり、全コード・全JSONを親へ返させたりせず、各担当が局所的な文脈で確認します。総トークンが必ず減る保証ではなく、文脈の集中と取り違え防止を狙う設計です。\n",
-      "code_hash": "822271dbcadad4f053b33ac606bb06b082a4e5f57e3b6c57cf3730dbb79b3748",
+      "code_hash": "255e74dd429333eb8f5776bd3a5a2aeabbc80ef56c5fa63b63ad097cb191e94f",
       "side": "new"
     },
     {
@@ -1544,8 +1624,8 @@
       "start_line": 47,
       "end_line": 58,
       "title": "分担しても全体の接続確認は親が引き受ける",
-      "body": "親は各担当の完了とstatusを照合し、未確認ファイル、対象外の扱い、説明の重複や矛盾を調べます。担当全体で全文・全カードを確認し、親は必要なカードだけを取得して横断的な接続を確かめます。\n\n最終buildとブラウザー確認も統合工程に含めます。担当が個々の形式検証を通しただけで、全体として完成したと判断しないための責任分担です。\n",
-      "code_hash": "822271dbcadad4f053b33ac606bb06b082a4e5f57e3b6c57cf3730dbb79b3748",
+      "body": "親は担当報告とstatusを照合し、未確認ファイル・対象外の扱い・説明の重複や矛盾を調べます。担当全体で全文と全カードを確認し、親は必要なカードだけを取得して横断的な接続を確かめます。\n\n最終buildでコードの変化を確認し、図があれば最終版の全図をPNG化して画像を開きます。レビュー全体のブラウザー操作確認は行いません。個々の形式検証が通っただけで、全体も完成したと判断しないための責任分担です。\n",
+      "code_hash": "255e74dd429333eb8f5776bd3a5a2aeabbc80ef56c5fa63b63ad097cb191e94f",
       "side": "new"
     },
     {
@@ -1595,17 +1675,17 @@
       "end_line": 49,
       "title": "カード所有の静的SVGを許可された表現へ限定する",
       "body": "図はカードのdiagramsへタイトル・説明・SVGとして添え、本文へ生のSVGを混ぜません。所属するカードと同じファイル・行範囲・版・Hashに対応させます。\n\n有限の正しいviewBox、許可要素・属性、図内で完結するID参照を使います。script、イベント、外部素材、CSS等を除去して通すのではなく、入力エラーとして拒否する契約です。視覚的に正しい図かどうかは、この形式検証とは別に確認します。\n",
-      "code_hash": "3c85c3953341ee6b7dcf76601c906725ceb1dd9a9255b0375c0fe9f873d55f08",
+      "code_hash": "53a58fee89635b5d0bd0a2163e8de6df67fe7273e23ec9a3b47cd14d19641db0",
       "side": "new"
     },
     {
       "id": "integration-svg-semantic-check",
       "file": "skills/walkthrough-review/references/svg-diagrams.md",
       "start_line": 51,
-      "end_line": 57,
-      "title": "矢印の意味と再生成・質問への引継ぎを確認する",
-      "body": "ノードと矢印を処理・条件・値へ対応させ、文章で省略した前提や推測を明示します。自己確認資料には説明とSVG全文が残るため、旧新の区別、分岐条件、実行順をソースと照合できます。\n\n表示では文字切れや線の重なり、カードを含むスクロール連動まで確かめます。再buildや質問文にも図が残るので、コード変更時は本文だけでなく図も読み直します。\n",
-      "code_hash": "3c85c3953341ee6b7dcf76601c906725ceb1dd9a9255b0375c0fe9f873d55f08",
+      "end_line": 82,
+      "title": "図の意味と最終版のPNGを別々に確認する",
+      "body": "ノードと矢印を処理・条件・値へ対応させ、前提や推測を明示します。自己確認資料は説明とSVG全文を保持するので、旧新・分岐条件・実行順をコードと照合できます。再buildでは図を保持し、コード変更時は本文と図を再確認します。\n\n最終版の全図を[描画ツール](review:skills/walkthrough-review/scripts/render_svg.py#L1)でPNGへ描き、拡大幅とカード幅をAIが開いて文字切れ・重なり・矢印・日本語の読みやすさを確認します。変更後は別の出力先へ再描画し、カードID・図番号・SVGの識別値に確認メモを結びます。画像生成成功だけで目視確認済みとはしません。\n\n通常のスキル実行ではレビュー全体の表示やスクロール連動をブラウザーで検証しません。質問文にもSVG全文を含めず、図のタイトルと文章による説明を添えます。\n",
+      "code_hash": "53a58fee89635b5d0bd0a2163e8de6df67fe7273e23ec9a3b47cd14d19641db0",
       "side": "new"
     },
     {
@@ -1799,6 +1879,46 @@
       "code_hash": "196f2b494b4203c0cd73e50b2e800f0a1ee292b62bb2f59d0464d830e0e2175d"
     },
     {
+      "id": "ui-svg-input",
+      "file": "skills/walkthrough-review/scripts/render_svg.py",
+      "side": "new",
+      "start_line": 27,
+      "end_line": 86,
+      "title": "図と所属カードを取り出し、描画前に同じ規則で検証する",
+      "body": "単独SVG、comments.json、review.jsonまたはレビューのフォルダを受け付け、図を所属カードのID・ファイル・旧新版・行範囲・作成時コードHashと一緒に取り出します。レビューにある未所属カードも対象に含めます。読み込んだ元入力全体のSHA-256も対応表のために計算します。\n\n各図は[レビュー本体の入力検証](review:skills/walkthrough-review/scripts/walkthrough.py#L670)へ通してから描画します。描画エンジンは指定パス、PATH、OSの標準配置から既存のChrome/Edge/Chromiumを探し、見つからなければ失敗します。図が0件ならエンジンは不要です。ファイルの存在確認は実行ファイル自体の真正性やSVGの意味の正しさを保証するものではありません。\n\n",
+      "code_hash": "64989c3380ca9014a7fe9ebca38d243b4cb470655aaf87493f067f75a36cad74"
+    },
+    {
+      "id": "ui-svg-paint",
+      "file": "skills/walkthrough-review/scripts/render_svg.py",
+      "side": "new",
+      "start_line": 89,
+      "end_line": 158,
+      "title": "SVGを画像へ隔離し、拡大幅とカード幅のPNGを作る",
+      "body": "SVGをbase64のdata URLとしてimgへ渡し、SVGソースをHTML要素として解釈させません。ブラウザー自身が求めた縦横比で拡大幅とカード幅の二つの画像を描き、白いCanvasへ上下に並べます。極端な高さや総画素数を拒否し、図が切れたまま成功しないようにします。\n\n専用一時プロファイルを持つヘッドレスブラウザーへローカルHTMLを渡し、DOMに置かれた完了結果を取得します。タイムアウト、異常終了、未完了、ブラウザー内の描画エラーは失敗です。base64とPNGのヘッダー・IHDR寸法を確認してバイト列を返します。これは画像出力の確認であり、文字切れ・重なり・矢印の意味はAIがPNGを開いて確認する工程に残ります。\n",
+      "code_hash": "64989c3380ca9014a7fe9ebca38d243b4cb470655aaf87493f067f75a36cad74"
+    },
+    {
+      "id": "ui-svg-output",
+      "file": "skills/walkthrough-review/scripts/render_svg.py",
+      "side": "new",
+      "start_line": 161,
+      "end_line": 211,
+      "title": "新規の出力先へ全図を保存してから対応表を確定する",
+      "body": "描画幅を100〜2400pxへ制限し、全図を読み込んで検証した後、未作成の出力フォルダを作ります。既存フォルダを再利用しないため、以前の画像を今回の結果と取り違えません。図ごとの一時フォルダで描画し、元SVG・PNG・SVGのHash・所属カードと寸法の対応を保存します。\n\nreport.jsonは全図の描画が終わった最後だけ書きます。途中失敗では部分的なSVGやPNGが残る可能性がありますが、全図成功を示す対応表は作りません。statusのrenderedは描画成功の意味であり、目視や意味の合格ではありません。CLIは失敗時に理由と終了値2を返し、成功時は画像パス等の小さな対応表をJSONで返します。\n",
+      "code_hash": "64989c3380ca9014a7fe9ebca38d243b4cb470655aaf87493f067f75a36cad74"
+    },
+    {
+      "id": "core-main-paths",
+      "file": "skills/walkthrough-review/scripts/walkthrough.py",
+      "start_line": 59,
+      "end_line": 127,
+      "title": "相対パスと生成先を分ける入力境界",
+      "body": "対象JSONのパスはプロジェクト相対の `/` 区切りに限定し、絶対パス、Windowsのドライブ・代替ストリームを表すコロン、逆斜線、空の要素、`.`・`..`、制御文字を拒否します。曖昧な指定を補正せず、入力文字列をそのまま全件一覧と照合するための入口です。ここだけではファイルの実在や内容は確認しません。\n\n出力先については解決後のパスがプロジェクト自身または配下に入るかを調べ、`scan` と `build` から拒否します。成果物を次の走査に再び取り込むことを防ぐ境界です。指定されたプロジェクト内へ資料を納める場合も、生成作業は外部で完了してから成果物一式を配置する運用になります。\n\n`is_link` はシンボリックリンクだけでなくWindowsのリパースポイントも検出します。実際に対象を読む[read_source](review:skills/walkthrough-review/scripts/walkthrough.py#L237)はこの検査を経路にも適用しますが、この補助関数群だけで競合中のファイル置換や全OSのアクセス制御を保証するものではありません。\n",
+      "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7",
+      "side": "new"
+    },
+    {
       "id": "python-main-inventory",
       "file": "skills/walkthrough-review/scripts/walkthrough.py",
       "side": "new",
@@ -1875,7 +1995,7 @@
       "start_line": 618,
       "end_line": 683,
       "title": "実行や外部参照を持たない静的SVGだけを許可",
-      "body": "解説図は単なる任意HTMLではなく、静的SVGに限定して検証します。XMLとして読めること、SVG名前空間のルート、有限数4個のviewBoxと正の幅・高さを確かめ、DOCTYPE・ENTITY・処理命令は解析前に拒否します。\n\n要素と属性は許可一覧だけを認めます。実行属性や外部素材の入口を削って黙認するのではなく、許可外の図全体をエラーにします。`url(#id)` は指定属性の完全な内部参照だけを許し、ID重複や参照先欠損、外部URL・未対応参照も拒否します。\n\n図配列の各要素には題名・説明・SVGが必須です。この検査は構造と許可機能の確認であり、文字が枠内に収まるか、矢印が処理の意味と一致するかまでは判定しません。そのため説明とSVG全文の自己確認に加え、表示時の確認も必要です。\n",
+      "body": "解説図は単なる任意HTMLではなく、静的SVGに限定して検証します。XMLとして読めること、SVG名前空間のルート、有限数4個のviewBoxと正の幅・高さを確かめ、DOCTYPE・ENTITY・処理命令は解析前に拒否します。\n\n要素と属性は許可一覧だけを認めます。実行属性や外部素材の入口を削って黙認するのではなく、許可外の図全体をエラーにします。`url(#id)` は指定属性の完全な内部参照だけを許し、ID重複や参照先欠損、外部URL・未対応参照も拒否します。\n\n図配列の各要素には題名・説明・SVGが必須です。この検査は構造と許可機能の確認であり、文字が枠内に収まるか、矢印が処理の意味と一致するかまでは判定しません。図を完成とするには説明とSVG全文をコードに照合し、[同梱の描画ツール](review:skills/walkthrough-review/scripts/render_svg.py#L1)でPNGへ描画して画像を確認します。\n",
       "code_hash": "4411033b4246aca0f17f0ed9c9532b83d734ba1cea4301e1728baaaec6a325a7"
     },
     {

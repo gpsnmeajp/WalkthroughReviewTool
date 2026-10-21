@@ -752,7 +752,7 @@
   }
 
   function openQuestion(context) {
-    state.question = { ...context, file: state.file, rows: state.rows };
+    state.question = { ...context, file: state.file };
     $("question-reference").textContent = `${state.file.path}${context.start ? ` · ${rangeLabel(context.start, context.end, context.side)}` : ` · ファイル全体${context.side === "old" ? "（旧版）" : ""}`}${context.comment ? ` · ${context.comment.title}` : ""}`;
     $("question-input").value = "";
     $("prompt-output").value = "";
@@ -764,46 +764,26 @@
   }
 
   function buildPrompt(question, context) {
-    const file = context.file, rows = context.rows || expandRows(file);
-    const rangeMissing = context.comment?.range_status === "missing";
-    const relevant = rangeMissing ? [] : context.start ? rows.filter((row) => row[context.side] != null && row[context.side] >= context.start && row[context.side] <= context.end) : rows;
-    const code = relevant.map((row) => `${row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " "} [旧:${row.old ?? "—"} 新:${row.new ?? "—"}] ${context.side === "old" ? row.old_text ?? row.text : row.text}${row.newline === false ? "\n\\ No newline at end of file" : ""}`).join("\n");
-    const maxBackticks = (code.match(/`+/g) || []).reduce((longest, item) => Math.max(longest, item.length), 2);
-    const fence = "`".repeat(maxBackticks + 1);
-    const reference = `review:${file.path.split("/").map(encodeURIComponent).join("/")}${context.start ? `#${context.side === "old" ? "O" : "L"}${context.start}` : ""}`;
-    const related = context.comment ? [context.comment] : (file.comments || []).filter((comment) => !context.start || (comment.side || "new") === context.side && comment.start_line <= context.end && comment.end_line >= context.start);
-    const hashDetails = related.flatMap((comment) => {
+    // コードはエージェントがパスから読む。質問には参照と必要な解説だけを渡す。
+    const file = context.file, comment = context.comment;
+    const target = context.start ? `${file.path}:${rangeLabel(context.start, context.end, context.side)}` : `${file.path}（${context.side === "old" ? "旧版・" : ""}ファイル全体）`;
+    const warnings = [];
+    if (comment) {
       const hash = commentHashInfo(comment, file);
-      return [`解説 ${comment.id}: ${hash.label}`, `  作成時コードHash: ${hash.expected || "未保存"}`, `  表示中コードHash: ${hash.actual || "未取得"}`, ...(comment.range_status === "missing" ? ["  元の参照行範囲は現在のスナップショットに存在しません。"] : []), ...(comment.link_warning ? [`  参照リンクの警告: ${comment.link_warning}`] : [])];
-    });
-    const diagramDetails = related.flatMap((comment) => (Array.isArray(comment.diagrams) ? comment.diagrams : []).flatMap((diagram) => {
-      const svg = typeof diagram?.svg === "string" ? diagram.svg : "";
-      const diagramFence = "`".repeat((svg.match(/`+/g) || []).reduce((longest, item) => Math.max(longest, item.length), 2) + 1);
-      return [`解説 ${comment.id} の図: ${diagram?.title || "図"}`, `説明: ${diagram?.description || "図の説明がありません。"}`, `${diagramFence}svg`, svg || "（図のSVGがありません）", diagramFence, ""];
-    }));
+      if (hash.status !== "verified") warnings.push(`注意: この解説は${hash.status === "mismatch" ? "表示中のコードと不一致です" : "コードとの対応が未照合です"}。`);
+      if (comment.range_status === "missing") warnings.push("注意: この行範囲はレビューの表示中コードに存在しません。");
+      if (comment.link_warning) warnings.push(`参照リンクの注意: ${comment.link_warning}`);
+    }
+    const diagramDetails = (Array.isArray(comment?.diagrams) ? comment.diagrams : []).map((diagram) => `図: ${diagram.title || "図"}\n${diagram.description || ""}`.trimEnd());
     const diffSummary = Array.isArray(file.diff_summary) ? file.diff_summary : [];
     return [
-      "以下のウォークスルーレビューについて質問します。",
-      "", `レビュー: ${data.title || data.project_name}`, `プロジェクト: ${data.project_root || data.project_name}`,
-      `モード: ${data.mode === "diff" ? "差分レビュー（変更後のファイル全文内に差分表示）" : "全体レビュー"}`,
-      `ファイル: ${file.path}`, `参照: ${reference}`,
-      `範囲: ${context.start ? rangeLabel(context.start, context.end, context.side) : "ファイル全体"}`,
-      `スナップショット生成日時: ${data.generated_at || "不明"}`,
-      file.sha256 ? `変更後ファイル SHA-256: ${file.sha256}` : "",
-      "コードHashはUTF-8 BOM除去・改行LF・末尾改行保持で照合:",
-      `  表示中の新版Hash: ${(file.code_hashes || {}).new || "未取得"}`,
-      `  表示中の旧版Hash: ${(file.code_hashes || {}).old || "未取得"}`,
-      ...hashDetails,
-      ...(related.some((comment) => commentHashInfo(comment, file).status !== "verified") ? ["注意: 未照合またはコード不一致の解説があります。説明と行範囲の対応が正しいと仮定しないでください。"] : []),
-      ...(diffSummary.length ? ["", "本文以外の差分:", ...diffSummary.map((item) => `- ${item}`)] : []),
+      `プロジェクト: ${data.project_root || data.project_name}`,
+      `対象: ${target}`,
       "", "質問:", question.trim(), "",
-      ...(context.comment ? [`対象の解説（${context.comment.id}）: ${context.comment.title || ""}`, context.comment.body || "", ""] : []),
+      ...(comment ? [`解説: ${comment.title || ""}`, comment.body || "", ...warnings, ""] : []),
       ...diagramDetails,
-      "該当コード（+ は追加、- は削除。行番号はレビュー生成時点）:",
-      fence, code || (rangeMissing ? "（元の参照行範囲が存在しないため、該当コードを取得できません）" : "（空のファイル）"), fence, "",
-      "該当箇所と周辺の設計意図を確認し、参照先を示しながら日本語で回答してください。",
-      "現在のプロジェクトと上記スナップショットが異なる場合は、その違いを明示してください。"
-    ].filter((value, index, array) => value !== "" || index === 0 || array[index - 1] !== "").join("\n");
+      ...(diffSummary.length ? ["", "本文以外の差分:", ...diffSummary.map((item) => `- ${item}`)] : []),
+    ].filter((value, index, array) => value !== "" || index === 0 || array[index - 1] !== "").join("\n").trimEnd();
   }
 
   async function copyPrompt() {
